@@ -1,0 +1,29 @@
+# Runs TreeLab's tests and builds it on every push and pull request. Nothing
+# is published from here: the playable TreeLab lives on studiograylake.com.
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read the code, nothing else.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # (Pinned to exact commits: a moved tag can't change what runs here.)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # (The check against the workshop is skipped here: the workshop isn't public.)
+      - run: npm test
+      - run: npm run build

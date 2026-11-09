@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.scratch/
+# Where the workshop is on this computer (workshop.config.js)
+.workshop

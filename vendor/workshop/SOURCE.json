@@ -1,0 +1,11 @@
+{
+  "from": "3D Procedural Animation Workshop",
+  "synced": "2026-11-09",
+  "files": {
+    "treeShapes.js": "b17e924afb69e1da972a2c2f2d6a2da70f937749837ee69fa8ed57184ccfb12f",
+    "treeSway.js": "ec7f8c47aed3a94cc2881150c4d19803c4d5133fb1bd131b2f76ac67d8af2c4c",
+    "spring.js": "3e6cd633e75ca101cfa32d18a4bd13dfddf27b5c1f2fffaffbfccf802b3e129a",
+    "wind.js": "be77581cf3a5746ac863a23631bc5e5e20067e6bc78aea3e2a2681724fd43349",
+    "windView.js": "7d830bdbd9ceec1241848ef412b65c4b7696e32935af7f615448347090ab2373"
+  }
+}

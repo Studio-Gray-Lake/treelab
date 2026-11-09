@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- (studiograylake.com's publishing stamps its build here; "dev" elsewhere) -->
+    <meta name="build" content="dev" />
+    <title>TreeLab</title>
+    <meta name="description" content="Grow low-poly trees in your browser, see them sway in the wind, and plant them in a forest. Save your settings, take screenshots, export models. A free tech demo from Studio Gray Lake." />
+    <link rel="canonical" href="https://studiograylake.com/treelab/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Studio Gray Lake" />
+    <meta property="og:title" content="TreeLab: procedural trees and forests" />
+    <meta property="og:description" content="Grow low-poly trees in your browser, see them sway in the wind, and plant them in a forest. Free, from Studio Gray Lake." />
+    <meta property="og:url" content="https://studiograylake.com/treelab/" />
+    <meta property="og:image" content="https://studiograylake.com/treelab/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="A low-poly forest of firs, pines and broadleaf trees on green hills" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 6 18h6l-5 8h18l-5-8h6z' fill='%233e6b35'/%3E%3Crect x='14' y='25' width='4' height='6' fill='%237a5a3a'/%3E%3C/svg%3E" />
+    <style>
+      :root {
+        --ink: #1f2a1c;
+        --ink-soft: #4a5644;
+        --panel: rgba(246, 248, 243, 0.88);
+        --line: rgba(31, 42, 28, 0.14);
+        --accent: #3e6b35;
+        --accent-soft: rgba(62, 107, 53, 0.25);
+        --tab: rgba(31, 42, 28, 0.06);
+        --sky: #bfd1e5;
+        /* The text size (the panel's "text size"): 1 is TreeLab's first size. */
+        --ui-scale: 1.5;
+        --s: var(--ui-scale);
+      }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: var(--sky); }
+      body { font: calc(13px * var(--s)) / 1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--ink); }
+      #app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+      .card {
+        background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+        backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      }
+      #info { position: fixed; top: 12px; left: 12px; max-width: min(calc(270px * var(--s)), 30vw, calc(100vw - 24px)); padding: calc(8px * var(--s)) calc(12px * var(--s)); }
+      #info h1 { margin: 0; font-size: calc(15px * var(--s)); letter-spacing: 0.01em; }
+      #info .sub { margin: 2px 0 8px; color: var(--ink-soft); }
+      #stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; }
+      #stats dt { color: var(--ink-soft); }
+      #stats dd { margin: 0; font-variant-numeric: tabular-nums; }
+      #hint, #source, #credit { margin: 8px 0 0; color: var(--ink-soft); font-size: calc(11px * var(--s)); }
+      #source { word-break: break-all; }
+      #source:empty { display: none; }
+      #note { margin: 6px 0 0; color: var(--accent); font-size: calc(12px * var(--s)); }
+      #note:empty { display: none; }
+      #credit a { color: inherit; }
+
+      #panel {
+        position: fixed; top: 12px; right: 12px; width: clamp(280px, calc(280px * var(--s)), 40vw); max-height: calc(100vh - 24px);
+        display: flex; flex-direction: column; overflow: hidden;
+      }
+      #tabs { display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid var(--line); flex: none; }
+      #tabs button {
+        flex: 1; padding: calc(5px * var(--s)) 0; border: 0; border-radius: 7px; background: transparent;
+        font: 600 calc(13px * var(--s)) system-ui, sans-serif; color: var(--ink-soft); cursor: pointer;
+      }
+      #tabs button:hover { background: var(--tab); }
+      #tabs button[aria-selected='true'] { background: var(--accent); color: #fff; }
+      #tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      #gui { overflow-y: auto; flex: 1; min-height: 0; }
+      #gui .lil-gui.root { width: 100%; --width: 100%; }
+      #gui .lil-gui {
+        --background-color: transparent; --title-background-color: rgba(31, 42, 28, 0.08); --text-color: var(--ink); --title-text-color: var(--ink);
+        --widget-color: rgba(31, 42, 28, 0.09); --hover-color: rgba(31, 42, 28, 0.15); --focus-color: rgba(31, 42, 28, 0.2);
+        --number-color: #2d5a8a; --string-color: #3e6b35; --name-width: 44%;
+        --font-size: calc(12px * var(--s)); --input-font-size: calc(12px * var(--s));
+        --widget-height: calc(20px * var(--s)); --padding: calc(4px * var(--s)); --spacing: calc(4px * var(--s));
+        --folder-indent: calc(8px * var(--s)); --slider-input-min-width: calc(40px * var(--s)); --color-input-min-width: calc(40px * var(--s));
+        --checkbox-size: calc(var(--widget-height) * 0.7); --scrollbar-width: 6px;
+      }
+      @media (pointer: coarse) {
+        #gui .lil-gui { --widget-height: max(calc(20px * var(--s)), 28px); --input-font-size: max(calc(12px * var(--s)), 16px); }
+      }
+
+      /* A [least, most] row: two handles on one track (src/rangeSlider.js). */
+      #gui .controller.range .widget { display: flex; align-items: center; gap: calc(6px * var(--s)); }
+      .range-track { position: relative; flex: 1; height: var(--widget-height); margin: 0 calc(7px * var(--s)); cursor: pointer; touch-action: none; }
+      .range-track::before, .range-fill {
+        content: ''; position: absolute; top: 50%; height: calc(4px * var(--s)); transform: translateY(-50%); border-radius: 999px;
+      }
+      .range-track::before { left: calc(-7px * var(--s)); right: calc(-7px * var(--s)); background: rgba(31, 42, 28, 0.15); }
+      .range-fill { background: var(--accent); }
+      .range-thumb {
+        position: absolute; top: 50%; width: calc(14px * var(--s)); height: calc(14px * var(--s)); box-sizing: border-box;
+        transform: translate(-50%, -50%); border-radius: 50%; background: #fff; border: calc(3px * var(--s)) solid var(--accent);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); cursor: grab; outline: none;
+      }
+      .range-thumb:focus-visible { box-shadow: 0 0 0 calc(4px * var(--s)) var(--accent-soft); }
+      .range-track.dragging .range-thumb { cursor: grabbing; }
+      .controller.range.disabled .range-track { opacity: 0.5; pointer-events: none; }
+      .range-value, .range-edit {
+        flex: none; width: 36%; min-width: 0; height: var(--widget-height); box-sizing: border-box; padding: 0 calc(5px * var(--s));
+        border: 0; border-radius: 2px; background: var(--widget-color); color: var(--number-color);
+        font: calc(12px * var(--s)) var(--font-family, system-ui); font-variant-numeric: tabular-nums; text-align: center; cursor: text;
+      }
+      .range-value:hover { background: var(--hover-color); }
+      #gui .range-value { width: 36%; }
+      .range-edit { width: 46%; display: flex; align-items: center; gap: 2px; padding: 0 2px; }
+      .range-edit input {
+        flex: 1; width: 0; min-width: 0; height: calc(var(--widget-height) - 4px); border: 0; border-radius: 2px; background: #fff;
+        color: var(--number-color); font: inherit; text-align: center;
+      }
+
+      /* Tooltips (src/tooltip.js). */
+      #tip {
+        position: fixed; left: 0; top: 0; z-index: 10; max-width: min(calc(250px * var(--s)), 70vw); box-sizing: border-box;
+        padding: calc(6px * var(--s)) calc(9px * var(--s)); border-radius: 8px; background: #1f2a1c; color: #f6f8f3;
+        font: calc(12px * var(--s)) / 1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+        pointer-events: none; opacity: 0; transition: opacity 0.12s; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+      }
+      #tip.on { opacity: 1; }
+
+      dialog {
+        border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; max-width: min(calc(360px * var(--s)), calc(100vw - 48px));
+        background: #f6f8f3; color: var(--ink); font: calc(13px * var(--s)) / 1.45 system-ui, sans-serif;
+      }
+      dialog::backdrop { background: rgba(20, 28, 18, 0.35); }
+      dialog h2 { margin: 0 0 8px; font-size: calc(15px * var(--s)); }
+      dialog p { margin: 0 0 10px; color: var(--ink-soft); }
+      dialog img { width: 100%; border-radius: 8px; margin: 0 0 10px; display: block; }
+      dialog .row { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+      dialog button, dialog a.button {
+        padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff;
+        font: 600 calc(12px * var(--s)) system-ui, sans-serif; color: var(--ink); cursor: pointer; text-decoration: none;
+      }
+      dialog button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+      @media (max-width: 700px) {
+        #panel { top: auto; bottom: 12px; right: 12px; left: 12px; width: auto; max-height: 55vh; }
+        #info { padding: 8px 12px; max-width: calc(100vw - 24px); }
+        #stats, #hint, #source, #credit { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="info" class="card">
+      <h1>TreeLab</h1>
+      <p class="sub" id="sub">Procedural trees and forests</p>
+      <dl id="stats"></dl>
+      <p id="note" role="status"></p>
+      <p id="hint">Drag to turn, scroll to zoom. Double-click a tree to see it alone.</p>
+      <p id="source"></p>
+      <p id="credit">A free tech demo by Studio Gray Lake. <a href="https://github.com/Studio-Gray-Lake/treelab" target="_blank" rel="noopener">Source</a> · <a href="THIRD-PARTY-NOTICES.txt" target="_blank" rel="noopener">Licences</a></p>
+    </div>
+    <div id="panel" class="card">
+      <div id="tabs" role="tablist" aria-label="TreeLab">
+        <button role="tab" id="tab-tree" data-tab="tree" aria-selected="true">Tree</button>
+        <button role="tab" id="tab-forest" data-tab="forest" aria-selected="false">Forest</button>
+      </div>
+      <div id="gui"></div>
+    </div>
+    <input type="file" id="load-file" accept=".json,application/json" hidden />
+    <dialog id="share-dialog">
+      <h2>Share</h2>
+      <img id="share-image" alt="Your screenshot" />
+      <p>Your screenshot is downloaded. Post it with the link: it opens TreeLab on exactly this view.</p>
+      <div class="row">
+        <button class="primary" id="share-copy">Copy link</button>
+        <a class="button" id="share-x" target="_blank" rel="noopener">X</a>
+        <a class="button" id="share-bluesky" target="_blank" rel="noopener">Bluesky</a>
+        <a class="button" id="share-reddit" target="_blank" rel="noopener">Reddit</a>
+        <a class="button" id="share-facebook" target="_blank" rel="noopener">Facebook</a>
+      </div>
+      <div class="row"><button id="share-close">Close</button></div>
+    </dialog>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
