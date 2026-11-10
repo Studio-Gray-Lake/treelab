@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TREE_KINDS, TREE_SHAPES } from '@workshop/treeShapes.js';
+import { TREE_SHAPES } from '@workshop/treeShapes.js';
+import { KINDS } from '../src/kinds.js';
 import { CHOICES, RANGES, SETTINGS_VERSION, assign, changes, defaultSettings, fromLink, normalize, rangeOf, toFile, toLink } from '../src/settings.js';
 
 // Settings files and share links come from other TreeLabs, older and newer,
@@ -77,7 +78,7 @@ test('out-of-range numbers are brought into range, wrong kinds of value left at 
   });
   assert.equal(settings.tree.seed, RANGES['tree.seed'][1]);
   assert.equal(settings.tree.rows, 3, 'rounded to its whole-number step');
-  assert.equal(settings.tree.kind, 'broadleaf');
+  assert.equal(settings.tree.kind, defaultSettings().tree.kind);
   assert.equal(settings.tree.labels, true);
   assert.equal(settings.forest.radius, 40, 'the wind covers 80 m: the forest stays inside');
   assert.equal(settings.forest.density, RANGES['forest.density'][0]);
@@ -108,8 +109,10 @@ test('a saved shape with settings the workshop has since dropped or reshaped sti
   assert.deepEqual(settings.shapes.broadleaf[key], TREE_SHAPES.broadleaf[key]);
 });
 
-test('every kind\'s mix is in the settings', () => {
-  assert.deepEqual(Object.keys(defaultSettings().forest.mix).sort(), [...TREE_KINDS].sort());
+test('every kind\'s mix is in the settings, the oak off to start', () => {
+  const { mix } = defaultSettings().forest;
+  assert.deepEqual(Object.keys(mix).sort(), [...KINDS].sort());
+  assert.equal(mix.oak.on, false, 'real-size oaks would crowd the default forest');
 });
 
 test('loading into the panel\'s settings keeps every object and array the panel is bound to', () => {

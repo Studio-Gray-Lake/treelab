@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { leafy } from './kinds.js';
 
 // The foliage's colours: each kind's two greens (a tree's tint picks
 // between them), turned toward autumn.
@@ -35,7 +36,7 @@ export function hashAt(x, z, salt) {
 }
 
 // Whether a kind's foliage turns in autumn.
-export const turns = (kind, autumn) => kind === 'broadleaf' || autumn.evergreens;
+export const turns = (kind, autumn) => leafy(kind) || autumn.evergreens;
 
 // How far a tree has turned (0 to 1).
 export function progressOf(record, autumn) {
@@ -52,7 +53,7 @@ export function foliageColor(record, colors, autumn, out = new THREE.Color()) {
   if (!turns(record.kind, autumn)) return out.lerp(DULL, 0.15 * autumn.amount);
   const p = progressOf(record, autumn);
   if (p <= 0) return out;
-  const palette = record.kind === 'broadleaf' ? PALETTES[autumn.palette] ?? PALETTES.mixed : LARCH;
+  const palette = leafy(record.kind) ? PALETTES[autumn.palette] ?? PALETTES.mixed : LARCH;
   const target = tmp.set(palette[Math.floor(hashAt(record.x, record.z, 2) * palette.length)]);
   if (p < 0.5) return out.lerp(TURNING, p * 2);
   return out.copy(TURNING).lerp(target, (p - 0.5) * 2);

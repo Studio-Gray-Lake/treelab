@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { TREE_KINDS, TREE_SHAPES } from '@workshop/treeShapes.js';
+import { DEFAULT_SHAPES, KINDS } from '../src/kinds.js';
 import { DEFAULT_WIND } from '@workshop/wind.js';
 import { defaultSettings } from '../src/settings.js';
 import { SHAPE_TIPS, TIPS, shapeTip, tip } from '../src/tips.js';
@@ -27,8 +27,8 @@ test('every one of the wind\'s own rows has a tooltip', () => {
 });
 
 test('every setting of the tree generator has a tooltip, for its kind', () => {
-  for (const kind of TREE_KINDS) {
-    const missing = Object.keys(TREE_SHAPES[kind]).filter((key) => !SHAPE_TIPS[kind][key]);
+  for (const kind of KINDS) {
+    const missing = Object.keys(DEFAULT_SHAPES[kind]).filter((key) => !SHAPE_TIPS[kind][key]);
     assert.deepEqual(missing, [], `${kind}: add these to src/tips.js SHAPE_TIPS`);
   }
 });

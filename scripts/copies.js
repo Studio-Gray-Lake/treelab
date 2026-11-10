@@ -1,10 +1,13 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-// A copied file's hash, its line endings taken as LF: git may turn them into
-// CRLF on a Windows checkout, and that's not an edit.
+// A copied file's hash. A text file's line endings are taken as LF: git may
+// turn them into CRLF on a Windows checkout, and that's not an edit. Other
+// files (a model) are hashed as they are.
 export function fileHash(file) {
-  return createHash('sha256').update(readFileSync(file, 'utf8').replace(/\r\n/g, '\n')).digest('hex');
+  const text = /\.(js|json|md|txt)$/i.test(file);
+  const data = text ? readFileSync(file, 'utf8').replace(/\r\n/g, '\n') : readFileSync(file);
+  return createHash('sha256').update(data).digest('hex');
 }
 
 // The imports in a file's source that are neither three.js nor one of the

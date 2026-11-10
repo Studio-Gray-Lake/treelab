@@ -1,4 +1,4 @@
-import { TREE_KINDS, TREE_SHAPES } from '@workshop/treeShapes.js';
+import { DEFAULT_SHAPES, KINDS } from './kinds.js';
 import { DEFAULT_WIND } from '@workshop/wind.js';
 import { limitsFor, sliderKind } from './limits.js';
 import { GREENS } from './tree.js';
@@ -20,15 +20,16 @@ export const SETTINGS_VERSION = 1;
 export const MAX_TREES = 4000;
 
 // The workshop's mix (src/trees.js TREE_MIX), in percent.
-const MIX = { fir: 45, pine: 20, broadleaf: 35 };
+// TreeLab's oak (real size, 20 m wide) is in the mix but off to start.
+const MIX = { fir: 45, pine: 20, broadleaf: 35, oak: 30 };
 
 export function defaultSettings() {
   return {
     app: 'TreeLab',
     version: SETTINGS_VERSION,
     tab: 'tree',
-    tree: { kind: 'broadleaf', seed: 7, variant: 0, tint: 0.5, show: 'one tree', rows: 2, cols: 4, vary: 'variants', gap: 1, labels: true },
-    shapes: structuredClone(TREE_SHAPES),
+    tree: { kind: 'oak', seed: 7, variant: 0, tint: 0.5, show: 'one tree', rows: 2, cols: 4, vary: 'variants', gap: 1, labels: true },
+    shapes: structuredClone(DEFAULT_SHAPES),
     forest: {
       seed: 7,
       area: 'circle',
@@ -42,7 +43,7 @@ export function defaultSettings() {
       patches: false,
       patchSize: 20,
       cover: 0.6,
-      mix: Object.fromEntries(TREE_KINDS.map((kind) => [kind, { on: true, share: MIX[kind] ?? 30 }])),
+      mix: Object.fromEntries(KINDS.map((kind) => [kind, { on: kind !== 'oak', share: MIX[kind] ?? 30 }])),
       grouping: 'mixed',
       standSize: 25,
       variants: 6,
@@ -51,7 +52,7 @@ export function defaultSettings() {
     },
     terrain: { seed: 3, height: 6, size: 35, roughness: 0.45 },
     // Each kind's foliage greens (a tree's tint picks between them), and autumn.
-    colors: Object.fromEntries(TREE_KINDS.map((kind) => [kind, { dark: hex(GREENS[kind][0]), light: hex(GREENS[kind][1]) }])),
+    colors: Object.fromEntries(KINDS.map((kind) => [kind, { dark: hex(GREENS[kind][0]), light: hex(GREENS[kind][1]) }])),
     autumn: { amount: 0, palette: 'mixed', spread: 0.5, evergreens: false },
     sway: { on: true, branch: 1, flutter: 0, timeScale: 1 },
     wind: { ...DEFAULT_WIND },
@@ -62,7 +63,7 @@ export function defaultSettings() {
 // The choices for each setting that is one of a list.
 export const CHOICES = {
   tab: ['tree', 'forest'],
-  'tree.kind': TREE_KINDS,
+  'tree.kind': KINDS,
   'tree.show': ['one tree', 'grid'],
   'tree.vary': ['variants', 'seeds', 'kinds by row'],
   'forest.area': ['circle', 'square'],
@@ -116,7 +117,7 @@ export const RANGES = {
 // A number setting's [least, most, step], by its path.
 export function rangeOf(path) {
   const shape = path.match(/^shapes\.(\w+)\.(\w+)$/);
-  if (shape) return TREE_SHAPES[shape[1]]?.[shape[2]] === undefined ? null : limitsFor(shape[2], TREE_SHAPES[shape[1]][shape[2]]);
+  if (shape) return DEFAULT_SHAPES[shape[1]]?.[shape[2]] === undefined ? null : limitsFor(shape[2], DEFAULT_SHAPES[shape[1]][shape[2]], shape[1]);
   if (/^forest\.mix\.\w+\.share$/.test(path)) return RANGES['forest.mix.share'];
   return RANGES[path] ?? null;
 }

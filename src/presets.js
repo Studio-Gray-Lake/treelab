@@ -1,4 +1,4 @@
-import { TREE_SHAPES } from '@workshop/treeShapes.js';
+import { DEFAULT_SHAPES } from './kinds.js';
 import { limitsFor, sliderKind } from './limits.js';
 
 // Ready-made shapes to start a kind from (the shape panel's "start from"):
@@ -7,6 +7,13 @@ import { limitsFor, sliderKind } from './limits.js';
 // doesn't have (or has reshaped since) is left out when it's applied.
 
 export const PRESETS = {
+  // TreeLab's own English oak: "open-grown" is its default.
+  oak: {
+    'open-grown': {},
+    young: { height: [5, 8], spread: [0.6, 0.8], trunk: [0.8, 1.4], girth: [0.07, 0.11], limbs: [3, 4], crooked: 0.2, droop: 0.1, clumpSize: [0.7, 1.1] },
+    'forest-grown': { height: [26, 31], spread: [0.4, 0.55], trunk: [11, 14], girth: [0.45, 0.6], limbs: [3, 4], crooked: 0.25, droop: 0.1, clumpSize: [1.6, 2.4] },
+    ancient: { height: [12, 16], spread: [1.15, 1.45], trunk: [2, 3], girth: [1.1, 1.4], lean: [2, 8], limbs: [4, 6], crooked: 0.75, droop: 0.55, leafiness: 0.45, clumpSize: [1.4, 2.4] },
+  },
   broadleaf: {
     workshop: {},
     oak: {
@@ -56,10 +63,10 @@ export const PRESETS = {
 // A preset's whole shape: the workshop's, with the preset's changes that
 // still fit (the same kind of value, inside its slider).
 export function presetShape(kind, name) {
-  const shape = structuredClone(TREE_SHAPES[kind]);
+  const shape = structuredClone(DEFAULT_SHAPES[kind]);
   for (const [key, value] of Object.entries(PRESETS[kind]?.[name] ?? {})) {
     if (!(key in shape) || sliderKind(value) !== sliderKind(shape[key])) continue;
-    const [lo, hi] = limitsFor(key, shape[key]);
+    const [lo, hi] = limitsFor(key, shape[key], kind);
     const fit = (v) => Math.min(hi, Math.max(lo, v));
     shape[key] = Array.isArray(value) ? value.map(fit) : fit(value);
   }

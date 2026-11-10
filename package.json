@@ -9,6 +9,7 @@
     "dev": "vite",
     "dev:live": "vite --mode live",
     "build": "vite build",
+    "build:site": "vite build --mode site",
     "preview": "vite preview",
     "test": "node --import ./tests/hooks.js --test",
     "sync": "node scripts/sync-workshop.js"

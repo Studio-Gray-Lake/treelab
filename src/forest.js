@@ -1,4 +1,5 @@
-import { TREE_KINDS, mulberry32 } from '@workshop/treeShapes.js';
+import { mulberry32 } from '@workshop/treeShapes.js';
+import { KINDS } from './kinds.js';
 import { createNoise, quantile, smoothstep } from './noise.js';
 import { areaOf, inArea, scatter } from './patterns.js';
 import { MAX_TREES } from './settings.js';
@@ -49,7 +50,7 @@ export function placeForest(forest, terrain) {
     points = points.slice(0, MAX_TREES);
   }
 
-  const kinds = TREE_KINDS.filter((k) => forest.mix[k]?.on && forest.mix[k].share > 0);
+  const kinds = KINDS.filter((k) => forest.mix[k]?.on && forest.mix[k].share > 0);
   const total = kinds.reduce((sum, k) => sum + forest.mix[k].share, 0);
   if (!kinds.length) return { records: [], report };
   const kindOf = forest.grouping === 'in stands' ? standsOf(forest, area, kinds, total) : () => {

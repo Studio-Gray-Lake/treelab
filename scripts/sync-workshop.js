@@ -10,7 +10,7 @@
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { LIVE_DIR, VENDOR_DIR, WORKSHOP_FILES, hasLiveWorkshop } from '../workshop.config.js';
+import { ALL_COPIES, LIVE_DIR, VENDOR_DIR, WORKSHOP_FILES, hasLiveWorkshop, originalOf } from '../workshop.config.js';
 import { fileHash, foreignImports } from './copies.js';
 
 const check = process.argv.includes('--check');
@@ -28,10 +28,10 @@ const git = (...args) => {
   }
 };
 
-const names = WORKSHOP_FILES;
+const names = ALL_COPIES;
 const behind = names.filter((name) => {
   try {
-    return fileHash(path.join(LIVE_DIR, name)) !== fileHash(path.join(VENDOR_DIR, name));
+    return fileHash(originalOf(name)) !== fileHash(path.join(VENDOR_DIR, name));
   } catch {
     return true;
   }
@@ -48,14 +48,14 @@ if (check) {
 
 // A copied file may import only three.js and the other copied files: a new
 // import means the workshop's file now needs something TreeLab doesn't have.
-const strays = names.flatMap((name) => foreignImports(readFileSync(path.join(LIVE_DIR, name), 'utf8'), names).map((i) => `${name} imports ${i}`));
+const strays = WORKSHOP_FILES.flatMap((name) => foreignImports(readFileSync(originalOf(name), 'utf8'), WORKSHOP_FILES).map((i) => `${name} imports ${i}`));
 if (strays.length) {
   console.error(`Not synced. These need a file TreeLab doesn't copy:\n  ${strays.join('\n  ')}\nAdd it to WORKSHOP_FILES in workshop.config.js, or change the workshop's file.`);
   process.exit(1);
 }
 
 mkdirSync(VENDOR_DIR, { recursive: true });
-for (const name of names) copyFileSync(path.join(LIVE_DIR, name), path.join(VENDOR_DIR, name));
+for (const name of names) copyFileSync(originalOf(name), path.join(VENDOR_DIR, name));
 
 const source = {
   from: '3D Procedural Animation Workshop',
@@ -66,6 +66,6 @@ writeFileSync(path.join(VENDOR_DIR, 'SOURCE.json'), `${JSON.stringify(source, nu
 
 // Where they came from, for the commit message (not kept in the repo).
 const at = `${git('rev-parse', '--abbrev-ref', 'HEAD')} @ ${git('rev-parse', '--short', 'HEAD')}`;
-const uncommitted = (git('status', '--porcelain', '--', ...names) || '').split('\n').filter(Boolean).map((l) => l.slice(3));
+const uncommitted = (git('status', '--porcelain', '--', ...names.map((name) => path.relative(LIVE_DIR, originalOf(name)))) || '').split('\n').filter(Boolean).map((l) => l.slice(3));
 console.log(behind.length ? `Synced from ${at}: ${behind.join(', ')} changed.` : `Already in step with ${at}.`);
 if (uncommitted.length) console.log(`Note: not committed in the workshop: ${uncommitted.join(', ')}.`);

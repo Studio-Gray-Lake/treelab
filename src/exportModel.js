@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { triangles } from './tree.js';
+import { leafy } from './kinds.js';
 
 // The trees shown (and the forest's ground) as a .glb file, standing still:
 // the sway bends them in a shader, which a model can't carry.
@@ -37,10 +38,10 @@ export async function exportModel({ trees, ground = null, groundHalf = Infinity,
   let count = 0;
 
   for (const [kind, species] of Object.entries(trees.userData.species ?? {})) {
-    const foliageMaterial = kind === 'broadleaf' ? materials.leaves : materials.needles;
+    const foliageMaterial = leafy(kind) ? materials.leaves : materials.needles;
     for (const variant of species.variants) {
       const [woodMesh, foliageMesh] = variant.meshes;
-      const name = `${kind} ${variant.model.seed}-${variant.model.variant}`;
+      const name = `${variant.model.kind} ${variant.model.seed}-${variant.model.variant}`;
       const wood = keep(flat(woodMesh.geometry));
       wood.name = `${name} wood`;
       // The foliage once per colour its trees are given.

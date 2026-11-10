@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { TREE_KINDS, TREE_SHAPES, buildTree, variantSeed } from '@workshop/treeShapes.js';
 import { GREENS, createPlanter, defaultShapes, resetShape } from '../src/tree.js';
+import { KINDS } from '../src/kinds.js';
 
 // One tree planted at the middle: its group and its grown tree.
 function grow({ kind, seed, variant, shape, tint = 0.5 }) {
@@ -20,7 +21,8 @@ import { LIMITS, limitsFor, sliderKind } from '../src/limits.js';
 // here before the page breaks.
 
 test('the workshop still gives the three kinds TreeLab knows', () => {
-  assert.deepEqual([...TREE_KINDS].sort(), Object.keys(GREENS).sort());
+  assert.deepEqual(['broadleaf', 'fir', 'pine'], [...TREE_KINDS].sort());
+  assert.deepEqual([...KINDS].sort(), Object.keys(GREENS).sort(), 'every kind has its greens');
   for (const kind of TREE_KINDS) assert.ok(TREE_SHAPES[kind], `TREE_SHAPES has no ${kind}`);
 });
 

@@ -4,7 +4,7 @@ Grow low-poly trees in your browser, compare their variations, and see how they 
 
 **Play it: https://studiograylake.com/treelab/**
 
-Nothing you do in TreeLab leaves your computer: no accounts, no tracking. Your browser keeps your last settings, and the address holds a link to what you see.
+No accounts, no cookies, and TreeLab itself sends nothing anywhere: your settings stay in your browser, and the address holds a link to what you see. The copy on studiograylake.com also loads the site's visit counter (Cloudflare Web Analytics, no cookies); a copy you build or run yourself has none.
 
 ## Run it
 
@@ -28,11 +28,11 @@ The tests must show `ℹ fail 0`.
 npm run build
 ```
 
-builds the site into `dist/`. To serve it from a sub-folder of a website, set `TREELAB_BASE` (say `/treelab/`) when building; by default the paths are relative, so `dist/` works from any folder.
+builds the site into `dist/`. To serve it from a sub-folder of a website, set `TREELAB_BASE` (say `/treelab/`) when building; by default the paths are relative, so `dist/` works from any folder. `npm run build:site` builds the copy for studiograylake.com: the same, plus the site's visit counter (`/assets/analytics.js`).
 
 ## Where the trees come from
 
-TreeLab runs on copies of five files from the 3D Procedural Animation Workshop, in `vendor/workshop/`:
+TreeLab runs on copies of six files from the 3D Procedural Animation Workshop, in `vendor/workshop/`:
 
 | File | What it does |
 |---|---|
@@ -41,6 +41,7 @@ TreeLab runs on copies of five files from the 3D Procedural Animation Workshop, 
 | `spring.js` | The damped spring `treeSway.js` uses |
 | `wind.js` | The wind: mean wind, gusts, swirl, lee behind hills, calm under crowns |
 | `windView.js` | The wind as a texture for the shaders, and its debug view |
+| `rig.glb` | The workshop's character, built in Blender: the figure that stands by the trees for scale |
 
 The workshop is their only home: **never edit the copies here**. Change them in the workshop, then copy them again:
 
@@ -62,8 +63,9 @@ To tell TreeLab where the workshop is, put the path of its `src` folder in a `.w
 
 Two tabs, one set of settings.
 
+- **The English oak** is TreeLab's own tree, grown at its real size (a mature oak in the open is about 20 m tall and wider than that). Its branches grow into the space of an oak's crown and compete for it, so they branch unevenly and from all along their parents; every branch is as thick as the branches it carries, and a side branch starts thinner than the one it leaves. Its sliders are an oak's: height, spread, bare trunk, girth, lean, limbs, crookedness, droop, leafiness. *start from* gives an oak grown in the open, a young one, one grown in a forest, and an ancient one. The workshop's broadleaf, fir and pine are there too, as the workshop grows them.
 - **Tree**: one tree, or a grid of them to compare (rows × columns, each a different variant or seed, or a row per kind), evenly spaced on flat ground with a metre grid and labels. Double-click a tree in the grid to see it alone.
-- **shape** (both tabs): every setting the workshop's generator has, reaching well past the workshop's own sliders (an old oak's girth, a 25 m spruce, limbs hanging past level). A [least, most] setting is one row with two handles; click its values to type them. *start from* gives each kind ready-made shapes: oak, birch, shrub, poplar, baobab; young fir, tall spruce, alpine fir; old pine, stone pine, young pine.
+- **shape** (both tabs): every setting of the kind's generator; for the workshop's trees, every setting the workshop's generator has, reaching well past the workshop's own sliders (an old oak's girth, a 25 m spruce, limbs hanging past level). A [least, most] setting is one row with two handles; click its values to type them. *start from* gives each kind ready-made shapes: oak, birch, shrub, poplar, baobab; young fir, tall spruce, alpine fir; old pine, stone pine, young pine.
 - **colour** (both tabs): *autumn* turns the broadleaves from green through gold to red, each tree at its own pace and limb by limb, in maple, birch, oak or mixed colours; firs and pines stay green unless *needles turn too*. Each kind's two greens are colour pickers.
 - **Forest**: the trees planted on generated hills.
   - **forest**: where they stand (a seed, and *new layout*), the area (a circle of radius R, or a square), and trees per hectare. The workshop's wind covers 80 m, so the forest stays within 40 m of the middle.
@@ -98,6 +100,8 @@ Settings files and links from older or newer TreeLabs still load: settings TreeL
 | `src/capture.js` | Screenshots and sharing them |
 | `src/exportModel.js` | `.glb` export |
 | `src/limits.js` | Each shape setting's slider: the workshop's own table, and TreeLab's wider one |
+| `src/oak/oak.js` | TreeLab's own English oak: its crown's space, its branches grown into it, their thickness, its leaves. Drawn by the workshop's mesher (`meshTree`), so the workshop's sway takes it |
+| `src/kinds.js` | Every kind TreeLab grows, TreeLab's own and the workshop's, and how each is grown |
 | `src/presets.js` | The ready-made shapes to start from |
 | `src/colors.js` | The foliage's greens and autumn |
 | `src/rangeSlider.js` | The two-handled row for a [least, most] setting |

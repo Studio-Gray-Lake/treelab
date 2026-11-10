@@ -1,4 +1,4 @@
-import { TREE_KINDS } from '@workshop/treeShapes.js';
+import { KINDS } from './kinds.js';
 
 // The Tree tab's trees: one tree, or a grid of them to compare, evenly
 // spaced on flat ground, all the same size, unturned and equally tinted.
@@ -14,14 +14,14 @@ export function gardenRecords(tree, shapes, planter) {
   if (tree.show !== 'grid') {
     cells.push({ kind: tree.kind, seed: tree.seed, variant: tree.variant, row: 0, col: 0 });
   } else {
-    const first = TREE_KINDS.indexOf(tree.kind);
+    const first = KINDS.indexOf(tree.kind);
     for (let row = 0; row < tree.rows; row++) {
       for (let col = 0; col < tree.cols; col++) {
         const i = row * tree.cols + col;
         if (tree.vary === 'seeds') cells.push({ kind: tree.kind, seed: tree.seed + i, variant: tree.variant, row, col });
         else if (tree.vary === 'kinds by row') {
-          const kind = TREE_KINDS[(first + row) % TREE_KINDS.length];
-          const round = Math.floor(row / TREE_KINDS.length);
+          const kind = KINDS[(first + row) % KINDS.length];
+          const round = Math.floor(row / KINDS.length);
           cells.push({ kind, seed: tree.seed, variant: tree.variant + round * tree.cols + col, row, col });
         } else cells.push({ kind: tree.kind, seed: tree.seed, variant: tree.variant + i, row, col });
       }

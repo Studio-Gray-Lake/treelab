@@ -1,3 +1,5 @@
+import { KIND_LIMITS } from './kinds.js';
+
 // Each shape setting's slider: least, most, step.
 //
 // WORKSHOP_LIMITS is the workshop's own table (LIMITS in its
@@ -33,13 +35,14 @@ export function sliderKind(value) {
   return null;
 }
 
-// The slider for a setting. If the workshop's generator gains a setting this
+// The slider for a setting (of a kind: TreeLab's own kinds have their own
+// table, src/kinds.js). If the workshop's generator gains a setting this
 // table doesn't know yet, it still gets a slider: from 0 to three times its
 // default, in whole steps if the default is a whole number. Every slider
 // stretches to take in its default.
-export function limitsFor(key, value) {
+export function limitsFor(key, value, kind = null) {
   const values = Array.isArray(value) ? value : [value];
   const biggest = Math.max(...values.map(Math.abs));
-  const [lo, hi, step] = LIMITS[key] ?? [0, Math.max(1, biggest * 3), values.every(Number.isInteger) ? 1 : 0.01];
+  const [lo, hi, step] = KIND_LIMITS[kind]?.[key] ?? (KIND_LIMITS[kind] ? null : LIMITS[key]) ?? [0, Math.max(1, biggest * 3), values.every(Number.isInteger) ? 1 : 0.01];
   return [Math.min(lo, ...values), Math.max(hi, ...values), step];
 }

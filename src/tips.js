@@ -4,7 +4,7 @@
 
 export const TIPS = {
   // The Tree tab.
-  'tree.kind': 'Which kind of tree: broadleaf, fir or pine.',
+  'tree.kind': 'Which kind of tree: TreeLab\'s English oak, at its real size, or the workshop\'s broadleaf, fir or pine.',
   'tree.seed': 'Picks which trees of this kind you get. The same seed always grows the same trees; the forest grows from it too.',
   'tree.variant': 'Each seed has many variants: siblings grown from the same seed. The forest mixes variants 0 and up.',
   'action.newSeed': 'A random seed: a new set of trees.',
@@ -16,7 +16,7 @@ export const TIPS = {
   'tree.gap': 'Space between the widest crowns in the grid, in metres.',
   'tree.labels': 'Name each tree in the grid by its variant or seed.',
   'shape.kind': 'Which kind\'s shape the sliders below change. Every tree of that kind changes, in both tabs.',
-  'preset.startFrom': 'Start this kind from a ready-made shape. "workshop" is the game\'s own; the others show what the sliders can do.',
+  'preset.startFrom': 'Start this kind from a ready-made shape. The oak: in the open, young, in a forest, or ancient. The workshop\'s trees: "workshop" is the game\'s own.',
 
   // The Forest tab.
   'readout.trees': 'How many trees the forest holds now.',
@@ -66,7 +66,7 @@ export const TIPS = {
   'view.wireframe': 'Show the trees\' triangles as lines.',
   'view.grid': 'A grid of 1 m squares on the ground.',
   'view.edge': 'A line round the forest\'s area.',
-  'view.person': 'A 1.75 m figure, for scale.',
+  'view.person': 'The workshop\'s own figure, standing by the trees for scale.',
   'view.spin': 'Turn the view slowly round the trees.',
   'action.frame': 'Move the camera back to see everything.',
 
@@ -107,6 +107,22 @@ const BRANCHING = {
   sway: 'How far a limb\'s tip bobs in the wind, in metres for each m/s.',
 };
 export const SHAPE_TIPS = {
+  // TreeLab's own English oak, at its real size.
+  oak: {
+    height: 'How tall the oak grows, to the top of its crown, in metres. A mature oak in the open is 17–22 m.',
+    spread: 'The crown\'s width over the tree\'s height. Above 1 the crown is wider than tall, as an oak in the open is.',
+    trunk: 'Bare trunk below the first big limbs, in metres. Short in the open; long in a forest, where it grows up toward the light.',
+    girth: 'How thick the trunk is: its radius just above the swollen foot, in metres. Every branch\'s thickness follows from it.',
+    lean: 'How far the whole tree leans, in degrees.',
+    limbs: 'How many big limbs the trunk divides into. They set off at different heights, turning round the trunk.',
+    crooked: 'How much the branches zig-zag. Oaks are crooked; 0 grows them straight.',
+    droop: 'How much long limbs sag with their length, their tips most.',
+    leafiness: 'How full the crown is: more branches grown into it, and fuller clusters of leaves.',
+    clumpSize: 'How big a cluster of leaves is: its radius, in metres.',
+    squash: 'A cluster\'s height over its width: below 1 flat, above 1 tall.',
+    rough: 'How lumpy the clusters of leaves are.',
+    sway: 'How far a branch tip bobs in the wind, in metres for each m/s.',
+  },
   broadleaf: {
     ...BRANCHING,
     trunk: 'How tall the bare trunk is, from the ground to where it splits into limbs, in metres.',

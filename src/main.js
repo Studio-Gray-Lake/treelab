@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import rigUrl from '../vendor/workshop/rig.glb?url';
 import GUI from 'three/addons/libs/lil-gui.module.min.js';
-import { TREE_KINDS, TREE_SHAPES } from '@workshop/treeShapes.js';
+import { DEFAULT_SHAPES, KINDS } from './kinds.js';
 import { createPlanter, recolor } from './tree.js';
 import { foliageColor, groundColor, mottleOf } from './colors.js';
 import { PRESETS, presetOf, presetShape } from './presets.js';
@@ -28,7 +30,6 @@ const SKY = 0xbfd1e5;
 const SUN = { color: 0xfff1dc, intensity: 2.5 };
 const HEMI = { sky: 0xffffff, ground: 0x8d7c6a, intensity: 1.5 };
 const SUN_FROM = new THREE.Vector3(9, 16, 7).normalize();
-const PERSON = 1.75; // m: the figure standing by the trees, for scale
 const HEAVY = 4e6; // triangles: more and a forest may stutter on an ordinary laptop
 const FLAT_GROUND = 0x7d8f55; // the workshop's ground (the hills are coloured by their vertices)
 const STORE = 'treelab.settings'; // where the browser keeps the last settings
@@ -216,12 +217,45 @@ function setEdge() {
   forestStage.add(edge);
 }
 
-const person = new THREE.Mesh(
-  new THREE.CapsuleGeometry(0.2, PERSON - 0.4, 4, 12).translate(0, PERSON / 2, 0),
-  new THREE.MeshStandardMaterial({ color: 0xc9b9a3, roughness: 0.8 }),
-);
-person.castShadow = true;
+// The figure standing by the trees for scale: the workshop's own character
+// (vendor/workshop/rig.glb, built in Blender: orange on its left, blue on
+// its right), standing at rest, its feet on the ground, facing the camera.
+const person = new THREE.Group();
+person.name = 'person';
 scene.add(person);
+new GLTFLoader().load(rigUrl, (gltf) => {
+  const figure = gltf.scene;
+  figure.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    o.frustumCulled = false; // (a skinned mesh's bounds are its rest pose's)
+  });
+  person.add(figure);
+  personHeight = heightOf(figure);
+  for (const row of personRows) row.name(personName());
+}, undefined, (error) => console.warn('TreeLab: the figure for scale could not be loaded.', error));
+
+// How tall the figure stands (m), from its posed vertices, for its row's name.
+let personHeight = null;
+const personName = () => (personHeight ? `figure for scale (${personHeight.toFixed(2)} m)` : 'figure for scale');
+function heightOf(object) {
+  object.updateMatrixWorld(true);
+  const v = new THREE.Vector3();
+  let lo = Infinity, hi = -Infinity;
+  object.traverse((o) => {
+    if (!o.isMesh) return;
+    const position = o.geometry.attributes.position;
+    for (let i = 0; i < position.count; i++) {
+      if (o.isSkinnedMesh) o.getVertexPosition(i, v);
+      else v.fromBufferAttribute(position, i);
+      v.applyMatrix4(o.matrixWorld);
+      lo = Math.min(lo, v.y);
+      hi = Math.max(hi, v.y);
+    }
+  });
+  return hi - lo;
+}
 
 // --- The settings --------------------------------------------------------------------------
 
@@ -345,7 +379,8 @@ const growTree = safely(function growTree({ frame = false } = {}) {
   stats.tree = one
     ? [['height', metres(first.height)], ['reach', metres(first.reach)], ['crown', metres(first.crown)], ['triangles', count(numbers.triangles)], ['grown in', `${numbers.ms.toFixed(1)} ms`]]
     : [['trees', count(numbers.trees)], ['tallest', metres(layout.tallest)], ['spacing', metres(layout.spacing)], ['triangles', count(numbers.triangles)], ['grown in', `${numbers.ms.toFixed(1)} ms`]];
-  person.position.set(one ? Math.max(2, first.reach + 1) : layout.records[0].x - layout.spacing / 2, 0, one ? 0.6 : layout.records[0].z);
+  // (On the tree's left: the panel covers the right of the view.)
+  person.position.set(one ? -Math.max(2, first.reach + 1) : layout.records[0].x - layout.spacing / 2, 0, one ? 0.6 : layout.records[0].z);
   if (settings.tab === 'tree') {
     fitStage(new THREE.Vector3(), layout.extent, layout.tallest);
     showStats();
@@ -367,7 +402,7 @@ const growForest = safely(function growForest({ frame = false } = {}) {
   const ms = performance.now() - start;
 
   const hectares = areaOf({ shape: settings.forest.area, radius: settings.forest.radius }) / 10000;
-  const kinds = TREE_KINDS.map((k) => [k, records.filter((r) => r.kind === k).length]).filter(([, n]) => n);
+  const kinds = KINDS.map((k) => [k, records.filter((r) => r.kind === k).length]).filter(([, n]) => n);
   stats.forest = [
     ['trees', count(records.length)],
     ['per hectare', count(records.length / hectares)],
@@ -425,6 +460,7 @@ function frameView() {
     camera.position.copy(controls.target).addScaledVector(new THREE.Vector3(0.5, 0.42, 1).normalize(), (r * 1.25) / Math.min(tanV * camera.aspect, tanV) + 6);
   }
   controls.update();
+  fitFog(); // (at once: the first frame may be a while coming)
 }
 
 // --- The tabs ------------------------------------------------------------------------
@@ -529,6 +565,20 @@ gridRows.push(watch(showFolder.add(settings.tree, 'cols', ...range('tree.cols'))
 gridRows.push(watch(showFolder.add(settings.tree, 'vary', CHOICES['tree.vary']).name('vary'), 'tree'));
 gridRows.push(watch(showFolder.add(settings.tree, 'gap', ...range('tree.gap')).name('gap between crowns (m)'), 'tree', { frame: true }));
 gridRows.push(watch(showFolder.add(settings.tree, 'labels').name('labels'), 'tree'));
+
+// The figure for scale, on or off: a row in each tab's first folders (the
+// same setting, so both say the same).
+const personRows = [];
+function addPersonRow(folder) {
+  const row = folder.add(settings.view, 'person').name(personName()).onChange((on) => {
+    person.visible = on;
+    for (const other of personRows) if (other !== row) other.updateDisplay();
+    remember();
+  });
+  personRows.push(row);
+  return row;
+}
+addPersonRow(showFolder);
 const showGridRows = () => gridRows.forEach((c) => c.show(settings.tree.show === 'grid'));
 
 // Forest tab: where the trees stand.
@@ -549,6 +599,7 @@ watch(forestFolder.add(settings.forest, 'area', CHOICES['forest.area']), 'forest
 const radiusRow = watch(forestFolder.add(settings.forest, 'radius', ...range('forest.radius')), 'forest', { frame: true });
 const nameRadius = () => radiusRow.name(settings.forest.area === 'circle' ? 'radius R (m)' : 'half its side (m)');
 watch(forestFolder.add(settings.forest, 'density', ...range('forest.density')).name('trees per hectare'), 'forest');
+addPersonRow(forestFolder);
 
 const patternFolder = gui.addFolder('pattern');
 folders.forest.push(patternFolder);
@@ -574,7 +625,7 @@ const showPatchRows = () => patchRows.forEach((c) => c.show(settings.forest.patc
 
 const mixFolder = gui.addFolder('mix');
 folders.forest.push(mixFolder);
-for (const kind of TREE_KINDS) {
+for (const kind of KINDS) {
   watch(mixFolder.add(settings.forest.mix[kind], 'on').name(kind), 'forest');
   watch(mixFolder.add(settings.forest.mix[kind], 'share', ...RANGES['forest.mix.share']).name(`${kind} share (%)`), 'forest');
 }
@@ -644,7 +695,7 @@ function fillShapeFolder() {
       skipped.push(key);
       continue;
     }
-    const limits = limitsFor(key, TREE_SHAPES[kind][key] ?? value);
+    const limits = limitsFor(key, DEFAULT_SHAPES[kind][key] ?? value, kind);
     if (slider === 'range') watch(new RangeController(shapeFolder, shape, key, ...limits).name(key), 'both', { also: showPreset });
     else watch(shapeFolder.add(shape, key, ...limits), 'both', { also: showPreset });
   }
@@ -663,7 +714,7 @@ recolored(colourFolder.add(settings.autumn, 'palette', CHOICES['autumn.palette']
 recolored(colourFolder.add(settings.autumn, 'spread', ...range('autumn.spread')).name('trees turn unevenly'));
 recolored(colourFolder.add(settings.autumn, 'evergreens').name('needles turn too'));
 const greensFolder = colourFolder.addFolder('greens').close();
-for (const kind of TREE_KINDS) {
+for (const kind of KINDS) {
   recolored(greensFolder.addColor(settings.colors[kind], 'dark').name(`${kind}: dark`));
   recolored(greensFolder.addColor(settings.colors[kind], 'light').name(`${kind}: light`));
 }
@@ -700,10 +751,6 @@ const gridRow = viewFolder.add(settings.view, 'grid').name('metre grid').onChang
   remember();
 });
 const edgeRow = viewFolder.add(settings.view, 'edge').name('forest edge').onChange((on) => edge && (edge.visible = on));
-viewFolder.add(settings.view, 'person').name(`person (${PERSON} m)`).onChange((on) => {
-  person.visible = on;
-  remember();
-});
 viewFolder.add(settings.view, 'spin').name('turn slowly').onChange((on) => {
   controls.autoRotate = on;
   remember();
@@ -736,15 +783,15 @@ const owners = new Map([
   [settings.tree, 'tree'], [settings.forest, 'forest'], [settings.terrain, 'terrain'], [settings.sway, 'sway'],
   [settings.wind, 'wind'], [settings.view, 'view'], [rig.clock, 'clock'], [shot, 'shot'], [model, 'model'],
   [ui, 'ui'], [forestReadout, 'readout'], [settings.autumn, 'autumn'],
-  ...TREE_KINDS.map((kind) => [settings.colors[kind], `colors:${kind}`]),
-  ...TREE_KINDS.map((kind) => [settings.forest.mix[kind], `mix:${kind}`]),
+  ...KINDS.map((kind) => [settings.colors[kind], `colors:${kind}`]),
+  ...KINDS.map((kind) => [settings.forest.mix[kind], `mix:${kind}`]),
 ]);
 function tipOf(row) {
   const c = gui.controllersRecursive().find((one) => one.domElement === row);
   if (!c) return null;
   if (c === shapeKind) return tip('shape.kind');
   if (c.object === rig.windView?.view) return tip('windView.show');
-  const kind = TREE_KINDS.find((k) => settings.shapes[k] === c.object);
+  const kind = KINDS.find((k) => settings.shapes[k] === c.object);
   if (kind) return shapeTip(kind, c.property);
   if (c.object === pick) return tip('preset.startFrom');
   const owner = owners.get(c.object);

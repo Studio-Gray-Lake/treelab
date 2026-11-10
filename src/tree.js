@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TREE_SHAPES, buildTree, variantSeed } from '@workshop/treeShapes.js';
+import { DEFAULT_SHAPES, growKind, leafy, swayKind } from './kinds.js';
 
 // Trees grown by the workshop's own generator (src/treeShapes.js) and
 // planted as the workshop's forest plants them (src/trees.js, plantTrees):
@@ -9,6 +9,7 @@ import { TREE_SHAPES, buildTree, variantSeed } from '@workshop/treeShapes.js';
 
 // The foliage's greens per kind, least and most tinted (src/trees.js).
 export const GREENS = {
+  oak: [0x4a6a2a, 0x6c8c3a],
   fir: [0x2a5034, 0x426a3c],
   pine: [0x23402f, 0x355238],
   broadleaf: [0x58763a, 0x86963f],
@@ -16,12 +17,12 @@ export const GREENS = {
 
 // Every kind's shape settings, a copy of the workshop's defaults that the
 // sliders can change.
-export const defaultShapes = () => structuredClone(TREE_SHAPES);
+export const defaultShapes = () => structuredClone(DEFAULT_SHAPES);
 
 // Put one kind's settings back to the workshop's defaults, in place, so the
 // sliders bound to them stay bound.
 export function resetShape(shapes, kind) {
-  for (const [key, value] of Object.entries(TREE_SHAPES[kind])) {
+  for (const [key, value] of Object.entries(DEFAULT_SHAPES[kind])) {
     if (Array.isArray(value)) shapes[kind][key].splice(0, Infinity, ...value);
     else shapes[kind][key] = structuredClone(value);
   }
@@ -56,7 +57,7 @@ export function createPlanter() {
   let round = 0;
 
   // A grown tree: { kind, seed, variant, tree (buildTree's), ms }.
-  function model(kind, seed, variant, shape = TREE_SHAPES[kind]) {
+  function model(kind, seed, variant, shape = DEFAULT_SHAPES[kind]) {
     const key = `${kind}|${seed}|${variant}`;
     const stamp = JSON.stringify(shape);
     let m = models.get(key);
@@ -66,7 +67,7 @@ export function createPlanter() {
     }
     if (!m) {
       const start = performance.now();
-      const tree = buildTree(kind, variantSeed(seed, kind, variant), shape);
+      const tree = growKind(kind, seed, variant, shape);
       m = { key, kind, seed, variant, tree, stamp, ms: performance.now() - start, grown: round, mottle: 0 };
       // (Its foliage's own colours, kept for mottle().)
       m.base = tree.foliage.attributes.color.array.slice();
@@ -86,10 +87,9 @@ export function createPlanter() {
   // planting's numbers. colorOf(record): a tree's foliage colour (by
   // default its kind's greens, by its tint); mottle(kind): how much its
   // limbs differ (0 to 1, see mottleModel).
-  function plant(group, records, shapes = TREE_SHAPES, { colorOf = greenOf, mottle = () => 0 } = {}) {
+  function plant(group, records, shapes = DEFAULT_SHAPES, { colorOf = greenOf, mottle = () => 0 } = {}) {
     clear(group);
     const materials = createMaterials();
-    const foliageOf = { fir: materials.needles, pine: materials.needles, broadleaf: materials.leaves };
     const byModel = new Map();
     for (const t of records) {
       const m = model(t.kind, t.seed, t.variant, shapes[t.kind]);
@@ -104,10 +104,11 @@ export function createPlanter() {
       mottleModel(m, mottle(kind));
       const meshes = [
         instanced(tree.wood, materials.bark, trees, null),
-        instanced(tree.foliage, foliageOf[kind], trees, colorOf),
+        instanced(tree.foliage, leafy(kind) ? materials.leaves : materials.needles, trees, colorOf),
       ];
       for (const t of trees) t.crown = tree.crown * t.size;
-      const entry = (species[kind] ??= { trees: [], meshes: [], height: 0, variants: [] });
+      // (Under the kind the workshop's sway tunes it by: an oak is a broadleaf there.)
+      const entry = (species[swayKind(kind)] ??= { trees: [], meshes: [], height: 0, variants: [] });
       entry.variants.push({ trees, meshes, height: tree.height, crown: tree.crown, model: m });
       entry.trees.push(...trees);
       entry.meshes.push(...meshes);
