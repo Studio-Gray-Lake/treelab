@@ -80,7 +80,7 @@ test('out-of-range numbers are brought into range, wrong kinds of value left at 
   assert.equal(settings.tree.rows, 3, 'rounded to its whole-number step');
   assert.equal(settings.tree.kind, defaultSettings().tree.kind);
   assert.equal(settings.tree.labels, true);
-  assert.equal(settings.forest.radius, 40, 'the wind covers 80 m: the forest stays inside');
+  assert.equal(settings.forest.radius, RANGES['forest.radius'][1]);
   assert.equal(settings.forest.density, RANGES['forest.density'][0]);
   assert.deepEqual(settings.forest.size, [0.6, 1.5], 'a range comes back in order');
   assert.equal(settings.forest.mix.fir.share, 100);

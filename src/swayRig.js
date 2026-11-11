@@ -2,6 +2,11 @@ import * as THREE from 'three';
 import { createWind } from '@workshop/wind.js';
 import { createWindView } from '@workshop/windView.js';
 import { createTreeSway } from '@workshop/treeSway.js';
+import { lightThrough } from './leafLight.js';
+import { gapsIn } from './crownGaps.js';
+import { underSky } from './skyShade.js';
+import { underMist } from './mistLight.js';
+import { underSunDisc } from './sunShadow.js';
 
 // The workshop's wind (src/wind.js), its texture and debug view
 // (src/windView.js) and its tree sway (src/treeSway.js), on whichever trees
@@ -45,6 +50,27 @@ export function createSwayRig({ scene, folder, wind: windSettings, sway: swaySet
     const windView = listening(keys, () => createWindView({ scene: holder, wind, terrain, folder: panel }));
     windView.view.show = show;
     const sway = createTreeSway({ trees, wind, windView, walk: { sim: clock }, listen: false, warmUp });
+    // (On top of the sway's patch: the sun through the leaves, src/leafLight.js.)
+    const { leaves, needles } = trees.userData.materials ?? {};
+    if (leaves) lightThrough(leaves, 1);
+    if (needles) lightThrough(needles, 0.45);
+    // (And on the shadows the sway gave the foliage: gaps, src/crownGaps.js.
+    // Needles let half as much through.)
+    for (const species of Object.values(trees.userData.species ?? {})) {
+      for (const mesh of species.meshes) {
+        if (mesh.material === leaves) gapsIn(mesh, 1);
+        else if (mesh.material === needles) gapsIn(mesh, 0.5);
+      }
+    }
+    // (And the sky's light on the trees and the ground under them, as much as
+    // gets down to each place: src/skyShade.js.)
+    // And the mist's: the sun on them dimmed as its beam is, and the light
+    // the mist has scattered (src/mistLight.js).
+    for (const material of [...Object.values(trees.userData.materials ?? {}), terrain.mesh.material]) {
+      underSky(material);
+      underMist(material);
+      underSunDisc(material); // (and the sun's width in their shadows: src/sunShadow.js)
+    }
     bound = { wind, windView, sway, holder, rows, keys };
     sync();
     return bound;
@@ -58,6 +84,7 @@ export function createSwayRig({ scene, folder, wind: windSettings, sway: swaySet
       o.geometry?.dispose();
       o.material?.dispose();
     });
+    bound.windView.texture?.dispose(); // (the wind's own map: nothing else lets it go)
     for (const row of bound.rows) row.destroy();
     for (const [type, listener, options] of bound.keys) globalThis.window?.removeEventListener?.(type, listener, options);
     bound = null;

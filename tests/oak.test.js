@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { DEFAULT_WIND } from '@workshop/wind.js';
-import { OAK_LIMITS, OAK_SHAPE, buildOak, layoutOak } from '../src/oak/oak.js';
+import { OAK_LIMITS, OAK_SHAPE, buildOak, layoutOak, partOf } from '../src/oak/oak.js';
 import { limitsFor, sliderKind } from '../src/limits.js';
 import { PRESETS, presetOf, presetShape } from '../src/presets.js';
 import { createPlanter } from '../src/tree.js';
@@ -17,8 +17,13 @@ const SEEDS = [11, 22, 33, 44, 55, 66];
 
 function sound(tree, label, shape = OAK_SHAPE) {
   assert.ok(finite(tree.wood) && finite(tree.foliage), `${label}: broken numbers`);
+  // (A crown bigger than the usual settings grow gets more wood and more
+  // clusters, as many times more as its outline is bigger. An ancient
+  // oak's thick wood is round: more sides.)
   const n = triangles(tree.wood) + triangles(tree.foliage);
-  assert.ok(n > 200 && n < 12000, `${label}: ${n} triangles`);
+  // (And a trunk thicker than any oak's has thick wood all the way out.)
+  const most = 22000 * tree.layout.oak.big ** 2 * Math.max(1, shape.girth[1] / 1.5);
+  assert.ok(n > 200 && n < most, `${label}: ${n} triangles (at most ${Math.round(most)})`);
   const [lo, hi] = shape.height;
   assert.ok(tree.height > lo * 0.7 && tree.height < hi * 1.3 + 1, `${label}: ${tree.height.toFixed(1)} m tall for ${lo}–${hi}`);
   assert.ok(tree.foliage.attributes.branch && tree.wood.attributes.branch, `${label}: no sway attribute`);
@@ -137,4 +142,118 @@ test('an oak exports to .glb and turns in autumn', async () => {
   const autumn = { amount: 1, palette: 'oak', spread: 0, evergreens: false };
   const oakColours = PALETTES.oak.map((c) => new THREE.Color(c).getHexString());
   assert.ok(oakColours.includes(foliageColor(record, colors, autumn).getHexString()), 'an oak stays green in autumn');
+});
+
+// --- A slider changes what it names and nothing else ---------------------------------
+
+const headings = (layout) => [...new Set(layout.segments.map((s) => s.limb.heading).filter((h) => h !== 0))].sort((a, b) => a - b);
+const near = (a, b) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+
+test('each part of an oak has random numbers of its own', () => {
+  const part = partOf(7);
+  assert.equal(part('height')(), part('height')(), 'the same part, the same numbers');
+  assert.notEqual(part('height')(), part('spread')(), 'two parts share their numbers');
+  assert.notEqual(part('limb', 0)(), part('limb', 1)(), 'two limbs share their numbers');
+  assert.notEqual(partOf(8)('height')(), part('height')(), 'two trees share their numbers');
+});
+
+test('shorter, narrower or longer in the trunk, it is the same oak fitted to another size', () => {
+  for (const seed of SEEDS) {
+    const usual = layoutOak(seed, OAK_SHAPE);
+    for (const [key, by] of [['height', -3], ['spread', -0.3], ['trunk', 2]]) {
+      const other = layoutOak(seed, { ...OAK_SHAPE, [key]: OAK_SHAPE[key].map((v) => v + by) });
+      assert.equal(other.oak.nodes, usual.oak.nodes, `seed ${seed}, ${key}: it grew another tree`);
+      assert.ok(near(headings(other), headings(usual)), `seed ${seed}, ${key}: its limbs turned`);
+      assert.equal(other.lean.toward, usual.lean.toward, `seed ${seed}, ${key}: it leans another way`);
+    }
+    const shorter = layoutOak(seed, { ...OAK_SHAPE, height: OAK_SHAPE.height.map((v) => v - 3) });
+    assert.ok(Math.abs(shorter.oak.height - usual.oak.height + 3) < 1e-9, `seed ${seed}: not 3 m shorter`);
+    assert.equal(shorter.oak.girth, usual.oak.girth, `seed ${seed}: its trunk changed`);
+  }
+});
+
+test('a giant keeps the limbs and the lean of the usual oak of its seed, with more on them', () => {
+  for (const seed of SEEDS) {
+    const usual = layoutOak(seed, OAK_SHAPE), giant = layoutOak(seed, { ...OAK_SHAPE, height: [35, 35] });
+    assert.ok(near(headings(giant), headings(usual)), `seed ${seed}: its limbs turned`);
+    assert.equal(giant.lean.toward, usual.lean.toward, `seed ${seed}: it leans another way`);
+    assert.ok(giant.oak.nodes > usual.oak.nodes * 1.5, `seed ${seed}: no more branches`);
+  }
+});
+
+test('one more limb leaves the others where they were', () => {
+  for (const seed of SEEDS) {
+    const four = headings(layoutOak(seed, { ...OAK_SHAPE, limbs: [4, 4] })), five = headings(layoutOak(seed, { ...OAK_SHAPE, limbs: [5, 5] }));
+    assert.equal(four.length, 4);
+    assert.equal(five.length, 5);
+    for (const h of four) assert.ok(five.some((g) => Math.abs(g - h) < 1e-9), `seed ${seed}: a limb moved`);
+  }
+});
+
+test('a fuller or more crooked crown keeps its limbs and its lean', () => {
+  for (const seed of SEEDS) {
+    const usual = layoutOak(seed, OAK_SHAPE);
+    for (const change of [{ leafiness: 0.2 }, { leafiness: 1 }, { crooked: 0.9 }, { clumpSize: [0.5, 1] }, { squash: 0.4 }, { crowded: 1 }]) {
+      const other = layoutOak(seed, { ...OAK_SHAPE, ...change });
+      assert.ok(near(headings(other), headings(usual)), `seed ${seed}, ${Object.keys(change)}: its limbs turned`);
+      assert.equal(other.lean.toward, usual.lean.toward, `seed ${seed}, ${Object.keys(change)}: it leans another way`);
+    }
+  }
+});
+
+// --- Leaves sit on twigs, on wood still growing, and there are enough of them ---------
+
+// How far a cluster is from the nearest drawn wood (m; 0 or less: it holds
+// some). As the mesher draws it: a ball, `squash` times as tall above its
+// middle and 0.6 of that below.
+function clear(c, segments) {
+  let best = Infinity;
+  for (const s of segments) {
+    for (let k = 0; k <= 8; k++) {
+      const p = [0, 1, 2].map((i) => s.from[i] + (s.to[i] - s.from[i]) * (k / 8));
+      const dy = p[1] - c.center[1];
+      const q = Math.sqrt(((p[0] - c.center[0]) ** 2 + (p[2] - c.center[2]) ** 2) / c.radius ** 2 + (dy / (c.radius * c.squash * (dy < 0 ? 0.6 : 1))) ** 2);
+      best = Math.min(best, (q - 1) * c.radius);
+    }
+  }
+  return best;
+}
+
+test('every cluster of leaves holds drawn wood: none floats', () => {
+  const shapes = [OAK_SHAPE, { ...OAK_SHAPE, squash: 0.3 }, { ...OAK_SHAPE, squash: 1.5 }, { ...OAK_SHAPE, clumpSize: [0.3, 0.8] }, { ...OAK_SHAPE, height: [35, 35] }, presetShape('oak', 'forest-grown'), presetShape('oak', 'young')];
+  for (const shape of shapes) {
+    for (const seed of SEEDS.slice(0, 3)) {
+      const { clumps, segments } = layoutOak(seed, shape);
+      assert.ok(clumps.length > 10, `seed ${seed}: ${clumps.length} clusters`);
+      for (const c of clumps) assert.ok(clear(c, segments) <= 0.02, `seed ${seed}: a cluster ${clear(c, segments).toFixed(2)} m clear of the wood`);
+    }
+  }
+});
+
+test('a bigger crown gets more wood and more clusters, not the same ones stretched', () => {
+  for (const seed of SEEDS.slice(0, 3)) {
+    const usual = layoutOak(seed, OAK_SHAPE), giant = layoutOak(seed, { ...OAK_SHAPE, height: [35, 35] });
+    assert.equal(usual.oak.big, 1, 'the usual oak is given the usual detail');
+    assert.ok(giant.oak.big > 1.3 && giant.oak.big <= 1.8, `a 35 m oak: ${giant.oak.big.toFixed(2)} times`);
+    assert.ok(giant.clumps.length > usual.clumps.length * 1.7, `seed ${seed}: ${giant.clumps.length} clusters on the giant, ${usual.clumps.length} on the usual`);
+    assert.ok(giant.segments.length > usual.segments.length * 1.7, `seed ${seed}: no more wood`);
+  }
+});
+
+test('twigs that stopped growing long ago are bare: few clusters sit low and deep inside the crown', () => {
+  const profile = (t) => { const c = 0.38, u = t < c ? (c - t) / c : (t - c) / (1 - c); return Math.sqrt(Math.max(0, 1 - Math.pow(u, t < c ? 3 : 2))); };
+  let all = 0, lowInside = 0, stopped = 0;
+  for (const seed of SEEDS) {
+    const { clumps, oak } = layoutOak(seed, OAK_SHAPE);
+    const bottom = Math.max(0.3, oak.bare * 0.95);
+    stopped += oak.stopped;
+    for (const c of clumps) {
+      const t = Math.min(1, Math.max(0, (c.center[1] - bottom) / (oak.height - bottom)));
+      const edge = (oak.width / 2) * profile(t);
+      all++;
+      if (t < 0.45 && edge > 0 && Math.hypot(c.center[0], c.center[2]) / edge < 0.6) lowInside++;
+    }
+  }
+  assert.ok(stopped / SEEDS.length > 15, `only ${(stopped / SEEDS.length).toFixed(0)} bare twigs a tree`);
+  assert.ok(lowInside / all < 0.09, `${Math.round((100 * lowInside) / all)}% of the clusters sit low and inside`);
 });

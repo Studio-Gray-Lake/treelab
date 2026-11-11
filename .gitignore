@@ -3,3 +3,6 @@ dist/
 .scratch/
 # Where the workshop is on this computer (workshop.config.js)
 .workshop
+# Mixamo's clips as downloaded (scripts/bake-clips.mjs reads them): never part of TreeLab
+.mixamo/
+*.fbx

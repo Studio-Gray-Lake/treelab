@@ -58,13 +58,14 @@
         display: flex; flex-direction: column; overflow: hidden;
       }
       #tabs { display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid var(--line); flex: none; }
-      #tabs button {
+      #tabs { align-items: center; }
+      #tabs button[role='tab'] {
         flex: 1; padding: calc(5px * var(--s)) 0; border: 0; border-radius: 7px; background: transparent;
         font: 600 calc(13px * var(--s)) system-ui, sans-serif; color: var(--ink-soft); cursor: pointer;
       }
-      #tabs button:hover { background: var(--tab); }
+      #tabs button[role='tab']:hover { background: var(--tab); }
       #tabs button[aria-selected='true'] { background: var(--accent); color: #fff; }
-      #tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      #tabs button[role='tab']:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       #gui { overflow-y: auto; flex: 1; min-height: 0; }
       #gui .lil-gui.root { width: 100%; --width: 100%; }
       #gui .lil-gui {
@@ -80,34 +81,78 @@
         #gui .lil-gui { --widget-height: max(calc(20px * var(--s)), 28px); --input-font-size: max(calc(12px * var(--s)), 16px); }
       }
 
+      /* Each part of the panel in a washed-out colour of its own (src/main.js: TINTS), so
+         one section tells from the next: its title, a stripe down its side, a faint wash
+         behind its rows. */
+      #gui .lil-gui[data-tint] { --wash: 30%; }
+      #gui .lil-gui[data-tint='leaf'] { --hue: 104; }
+      #gui .lil-gui[data-tint='wood'] { --hue: 72; }
+      #gui .lil-gui[data-tint='earth'] { --hue: 36; }
+      #gui .lil-gui[data-tint='bark'] { --hue: 18; }
+      #gui .lil-gui[data-tint='sun'] { --hue: 50; --wash: 45%; }
+      #gui .lil-gui[data-tint='autumn'] { --hue: 356; }
+      #gui .lil-gui[data-tint='air'] { --hue: 204; }
+      #gui .lil-gui[data-tint='slate'] { --hue: 256; --wash: 18%; }
+      #gui .lil-gui[data-tint='paper'] { --hue: 100; --wash: 4%; }
+      #gui .lil-gui[data-tint] > .title { background: hsl(var(--hue) var(--wash) 80% / 0.9); box-shadow: inset calc(4px * var(--s)) 0 0 hsl(var(--hue) var(--wash) 52%); }
+      #gui .lil-gui[data-tint] > .children { background: hsl(var(--hue) var(--wash) 86% / 0.4); box-shadow: inset calc(4px * var(--s)) 0 0 hsl(var(--hue) var(--wash) 52% / 0.55); padding-left: calc(4px * var(--s)); }
+      #gui .lil-gui .lil-gui .lil-gui[data-tint] > .children { border-left: 0; }
+
+      /* A card folds away to its top row (src/main.js: the fold buttons, or H for both). */
+      .fold {
+        flex: none; width: calc(22px * var(--s)); height: calc(22px * var(--s)); padding: 0; border: 0; border-radius: 6px; background: transparent;
+        color: var(--ink-soft); font: 600 calc(13px * var(--s)) / 1 system-ui, sans-serif; cursor: pointer;
+      }
+      .fold:hover { background: var(--tab); }
+      .fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+      .fold::before { content: '–'; }
+      .card.folded .fold::before { content: '+'; }
+      #info-top { display: flex; align-items: center; justify-content: space-between; gap: calc(8px * var(--s)); }
+      #info.folded #info-body, #panel.folded #gui { display: none; }
+      #panel.folded #tabs { border-bottom: 0; }
+
       /* A [least, most] row: two handles on one track (src/rangeSlider.js). */
       #gui .controller.range .widget { display: flex; align-items: center; gap: calc(6px * var(--s)); }
-      .range-track { position: relative; flex: 1; height: var(--widget-height); margin: 0 calc(7px * var(--s)); cursor: pointer; touch-action: none; }
+      .range-track { position: relative; flex: 1; height: var(--widget-height); margin: 0 calc(5.5px * var(--s)); cursor: pointer; touch-action: none; }
       .range-track::before, .range-fill {
         content: ''; position: absolute; top: 50%; height: calc(4px * var(--s)); transform: translateY(-50%); border-radius: 999px;
       }
-      .range-track::before { left: calc(-7px * var(--s)); right: calc(-7px * var(--s)); background: rgba(31, 42, 28, 0.15); }
+      .range-track::before { left: calc(-5.5px * var(--s)); right: calc(-5.5px * var(--s)); background: rgba(31, 42, 28, 0.15); }
       .range-fill { background: var(--accent); }
       .range-thumb {
-        position: absolute; top: 50%; width: calc(14px * var(--s)); height: calc(14px * var(--s)); box-sizing: border-box;
-        transform: translate(-50%, -50%); border-radius: 50%; background: #fff; border: calc(3px * var(--s)) solid var(--accent);
+        position: absolute; top: 50%; width: calc(11px * var(--s)); height: calc(11px * var(--s)); box-sizing: border-box;
+        transform: translate(-50%, -50%); border-radius: 50%; background: #fff; border: calc(2.5px * var(--s)) solid var(--accent);
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); cursor: grab; outline: none;
       }
       .range-thumb:focus-visible { box-shadow: 0 0 0 calc(4px * var(--s)) var(--accent-soft); }
       .range-track.dragging .range-thumb { cursor: grabbing; }
       .controller.range.disabled .range-track { opacity: 0.5; pointer-events: none; }
       .range-value, .range-edit {
-        flex: none; width: 36%; min-width: 0; height: var(--widget-height); box-sizing: border-box; padding: 0 calc(5px * var(--s));
+        flex: none; width: 36%; min-width: 0; height: var(--widget-height); box-sizing: border-box; padding: 0 calc(3px * var(--s)); white-space: nowrap; overflow: hidden;
         border: 0; border-radius: 2px; background: var(--widget-color); color: var(--number-color);
         font: calc(12px * var(--s)) var(--font-family, system-ui); font-variant-numeric: tabular-nums; text-align: center; cursor: text;
       }
       .range-value:hover { background: var(--hover-color); }
-      #gui .range-value { width: 36%; }
+      /* (As wide as its numbers need, from 36% of the row's widget up to 58%: "1.6–4.05" fits on one line.) */
+      #gui .range-value { width: auto; min-width: 36%; max-width: 58%; }
       .range-edit { width: 46%; display: flex; align-items: center; gap: 2px; padding: 0 2px; }
       .range-edit input {
         flex: 1; width: 0; min-width: 0; height: calc(var(--widget-height) - 4px); border: 0; border-radius: 2px; background: #fff;
         color: var(--number-color); font: inherit; text-align: center;
       }
+
+      /* A crown's outline, drawn (src/outlineEditor.js): the row is all drawing, no name beside it. */
+      #gui .controller.outline { display: block; }
+      #gui .controller.outline .name { display: none; }
+      #gui .controller.outline .widget { width: 100%; }
+      .outline-drawing { display: block; width: 100%; height: auto; border-radius: 4px; background: rgba(255, 255, 255, 0.45); cursor: ew-resize; touch-action: none; }
+      .outline-level { stroke: rgba(31, 42, 28, 0.13); stroke-width: 1; stroke-dasharray: 2 3; }
+      .outline-trunk { stroke: #7a5a3a; stroke-width: 5; stroke-linecap: round; }
+      .outline-crown { fill: rgba(62, 107, 53, 0.3); stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; }
+      .outline-dot { fill: #fff; stroke: var(--accent); stroke-width: 2.5; cursor: grab; outline: none; }
+      .outline-dot:focus-visible { stroke-width: 4; }
+      .outline-drawing.dragging, .outline-drawing.dragging .outline-dot { cursor: grabbing; }
+      .controller.outline.disabled .outline-drawing { opacity: 0.5; pointer-events: none; }
 
       /* Tooltips (src/tooltip.js). */
       #tip {
@@ -133,6 +178,16 @@
       }
       dialog button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+      /* The welcome card, on a first visit (src/welcome.js). One more line on a phone. */
+      #welcome { box-sizing: border-box; }
+      #welcome > :last-child { margin-bottom: 0; }
+      #welcome a { color: var(--accent); }
+      #welcome button:focus-visible, #welcome a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      #welcome-phone { display: none; }
+      @media (max-width: 700px), (pointer: coarse) {
+        #welcome-phone { display: block; }
+      }
+
       @media (max-width: 700px) {
         #panel { top: auto; bottom: 12px; right: 12px; left: 12px; width: auto; max-height: 55vh; }
         #info { padding: 8px 12px; max-width: calc(100vw - 24px); }
@@ -143,18 +198,24 @@
   <body>
     <div id="app"></div>
     <div id="info" class="card">
-      <h1>TreeLab</h1>
-      <p class="sub" id="sub">Procedural trees and forests</p>
-      <dl id="stats"></dl>
-      <p id="note" role="status"></p>
-      <p id="hint">Drag to turn, scroll to zoom. Double-click a tree to see it alone.</p>
-      <p id="source"></p>
-      <p id="credit">A free tech demo by Studio Gray Lake. <a href="https://github.com/Studio-Gray-Lake/treelab" target="_blank" rel="noopener">Source</a> · <a href="THIRD-PARTY-NOTICES.txt" target="_blank" rel="noopener">Licences</a></p>
+      <div id="info-top">
+        <h1>TreeLab</h1>
+        <button class="fold" data-folds="info" aria-controls="info-body" aria-expanded="true" aria-label="Fold this card away"></button>
+      </div>
+      <div id="info-body">
+        <p class="sub" id="sub">Procedural trees and forests</p>
+        <dl id="stats"></dl>
+        <p id="note" role="status"></p>
+        <p id="hint">Drag to turn, scroll to zoom. Double-click a tree to see it alone. H hides the panels.</p>
+        <p id="source"></p>
+        <p id="credit">A free tech demo by Studio Gray Lake. <a href="https://github.com/Studio-Gray-Lake/treelab" target="_blank" rel="noopener">Source</a> · <a href="THIRD-PARTY-NOTICES.txt" target="_blank" rel="noopener">Licences</a></p>
+      </div>
     </div>
     <div id="panel" class="card">
       <div id="tabs" role="tablist" aria-label="TreeLab">
         <button role="tab" id="tab-tree" data-tab="tree" aria-selected="true">Tree</button>
         <button role="tab" id="tab-forest" data-tab="forest" aria-selected="false">Forest</button>
+        <button class="fold" data-folds="panel" aria-controls="gui" aria-expanded="true" aria-label="Fold the settings away"></button>
       </div>
       <div id="gui"></div>
     </div>
@@ -171,6 +232,17 @@
         <a class="button" id="share-facebook" target="_blank" rel="noopener">Facebook</a>
       </div>
       <div class="row"><button id="share-close">Close</button></div>
+    </dialog>
+    <dialog id="welcome" aria-labelledby="welcome-title">
+      <h2 id="welcome-title">Welcome to TreeLab</h2>
+      <p>A free tech demo from Studio Gray Lake. Grow a tree on the Tree tab, plant a forest on the Forest tab.</p>
+      <p>Drag to turn, scroll to zoom. On the Forest tab, tick "walk among the trees" to walk through it. H hides the panels.</p>
+      <p id="welcome-phone">TreeLab is 3D and works best on a computer. On a touch screen, pinch to zoom.</p>
+      <div class="row">
+        <button class="primary" id="welcome-ok" autofocus>OK</button>
+        <button id="welcome-never">Don't show this again</button>
+      </div>
+      <p><a id="welcome-about" target="_blank" rel="noopener">What is TreeLab?</a></p>
     </dialog>
     <script type="module" src="/src/main.js"></script>
   </body>

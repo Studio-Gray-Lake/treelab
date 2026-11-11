@@ -1,5 +1,6 @@
 import { DEFAULT_SHAPES, KINDS } from './kinds.js';
 import { DEFAULT_WIND } from '@workshop/wind.js';
+import { hasAges } from './age.js';
 import { limitsFor, sliderKind } from './limits.js';
 import { GREENS } from './tree.js';
 
@@ -15,8 +16,8 @@ import { GREENS } from './tree.js';
 
 export const SETTINGS_VERSION = 1;
 
-// The most trees a forest may hold (the sliders can't reach it: 3,000 a
-// hectare on an 80 m square is 1,920).
+// The most trees a forest may hold. A bigger, denser forest than this is
+// planted thinner all over (src/forest.js), and says so.
 export const MAX_TREES = 4000;
 
 // The workshop's mix (src/trees.js TREE_MIX), in percent.
@@ -43,7 +44,8 @@ export function defaultSettings() {
       patches: false,
       patchSize: 20,
       cover: 0.6,
-      mix: Object.fromEntries(KINDS.map((kind) => [kind, { on: kind !== 'oak', share: MIX[kind] ?? 30 }])),
+      // (A kind with ages, the oak: mixed: its trees of several ages, from ages[0] to ages[1] years; old: 0 mostly young, 1 mostly old. src/age.js.)
+      mix: Object.fromEntries(KINDS.map((kind) => [kind, { on: kind !== 'oak', share: MIX[kind] ?? 30, ...(hasAges(kind) ? { mixed: false, ages: [30, 300], old: 0.5 } : {}) }])),
       grouping: 'mixed',
       standSize: 25,
       variants: 6,
@@ -55,8 +57,11 @@ export function defaultSettings() {
     colors: Object.fromEntries(KINDS.map((kind) => [kind, { dark: hex(GREENS[kind][0]), light: hex(GREENS[kind][1]) }])),
     autumn: { amount: 0, palette: 'mixed', spread: 0.5, evergreens: false },
     sway: { on: true, branch: 1, flutter: 0, timeScale: 1 },
+    // The time of day (hours) and where the noon sun shines from (degrees).
+    light: { hour: 19.25, runs: 0, from: 220, glow: 1, shafts: 1, mist: 0.2, gaps: 0.35, shade: 1, eye: 1 },
     wind: { ...DEFAULT_WIND },
-    view: { wireframe: false, grid: true, person: true, spin: false },
+    // (stand: the forest seen from among its trees, at eye height: src/stand.js.)
+    view: { wireframe: false, grid: true, person: true, spin: false, stand: false, eyes: false },
   };
 }
 
@@ -84,8 +89,8 @@ export const RANGES = {
   'tree.cols': [1, 8, 1],
   'tree.gap': [0, 6, 0.1],
   'forest.seed': [1, 999, 1],
-  'forest.radius': [5, 40, 1],
-  'forest.density': [50, 3000, 10],
+  'forest.radius': [5, 160, 1],
+  'forest.density': [10, 3000, 10],
   'forest.jitter': [0, 1, 0.05],
   'forest.clumpTrees': [2, 30, 1],
   'forest.clumpSpread': [1, 15, 0.5],
@@ -93,6 +98,8 @@ export const RANGES = {
   'forest.patchSize': [5, 60, 1],
   'forest.cover': [0.1, 1, 0.05],
   'forest.mix.share': [0, 100, 1],
+  'forest.mix.ages': [10, 800, 1],
+  'forest.mix.old': [0, 1, 0.01],
   'forest.standSize': [8, 60, 1],
   'forest.variants': [1, 12, 1],
   'forest.size': [0.5, 1.6, 0.05],
@@ -103,6 +110,15 @@ export const RANGES = {
   'terrain.roughness': [0, 0.8, 0.05],
   'autumn.amount': [0, 1, 0.01],
   'autumn.spread': [0, 1, 0.01],
+  'light.hour': [5, 21, 0.25],
+  'light.runs': [0, 24, 0.5],
+  'light.from': [0, 355, 5],
+  'light.glow': [0, 2, 0.05],
+  'light.shafts': [0, 10, 0.05],
+  'light.mist': [0, 1, 0.01],
+  'light.gaps': [0, 1, 0.01],
+  'light.shade': [0, 1, 0.05],
+  'light.eye': [0, 1, 0.05],
   'sway.branch': [0, 3, 0.05],
   'sway.flutter': [0, 3, 0.05],
   'sway.timeScale': [0, 3, 0.05],
@@ -118,7 +134,8 @@ export const RANGES = {
 export function rangeOf(path) {
   const shape = path.match(/^shapes\.(\w+)\.(\w+)$/);
   if (shape) return DEFAULT_SHAPES[shape[1]]?.[shape[2]] === undefined ? null : limitsFor(shape[2], DEFAULT_SHAPES[shape[1]][shape[2]], shape[1]);
-  if (/^forest\.mix\.\w+\.share$/.test(path)) return RANGES['forest.mix.share'];
+  const mix = path.match(/^forest\.mix\.\w+\.(share|ages|old)$/);
+  if (mix) return RANGES[`forest.mix.${mix[1]}`];
   return RANGES[path] ?? null;
 }
 

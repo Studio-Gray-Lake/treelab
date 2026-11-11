@@ -22,13 +22,19 @@ const SINK = 0.3; // m a tree stands sunk into the ground, as in the workshop (i
 
 export function placeForest(forest, terrain) {
   const area = { shape: forest.area, radius: forest.radius };
-  const density = forest.density / 10000; // per m²
+  const report = { area: areaOf(area), candidates: 0, clearings: 0, steep: 0, capped: 0, thinnedTo: 0 };
+  // Over MAX_TREES, the forest is planted thinner all over (not cut off at
+  // the end of its rows), and the report says to what.
+  let density = forest.density / 10000; // per m²
+  if (density * report.area > MAX_TREES) {
+    density = (MAX_TREES * 0.97) / report.area;
+    report.thinnedTo = density * 10000;
+  }
   const random = mulberry32(forest.seed);
   // (Kinds, sizes and turns from their own stream, so the places stay put
   // when only the mix changes.)
   const pick = mulberry32(forest.seed + 101);
 
-  const report = { area: areaOf(area), candidates: 0, clearings: 0, steep: 0, capped: 0 };
   let points = scatter(forest.pattern, { area, density, random, jitter: forest.jitter, clumpTrees: forest.clumpTrees, clumpSpread: forest.clumpSpread, rowAngle: forest.rowAngle });
   report.candidates = points.length;
 
@@ -46,8 +52,9 @@ export function placeForest(forest, terrain) {
   report.steep = before - points.length;
 
   if (points.length > MAX_TREES) {
+    // (Should the pattern still overshoot, every so many is left out, all over.)
     report.capped = points.length - MAX_TREES;
-    points = points.slice(0, MAX_TREES);
+    points = Array.from({ length: MAX_TREES }, (_, k) => points[Math.floor((k * points.length) / MAX_TREES)]);
   }
 
   const kinds = KINDS.filter((k) => forest.mix[k]?.on && forest.mix[k].share > 0);

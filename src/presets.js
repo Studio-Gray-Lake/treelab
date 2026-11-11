@@ -7,12 +7,18 @@ import { limitsFor, sliderKind } from './limits.js';
 // doesn't have (or has reshaped since) is left out when it's applied.
 
 export const PRESETS = {
-  // TreeLab's own English oak: "open-grown" is its default.
+  // TreeLab's own English oak: "open-grown" is its default. Each has its
+  // crown's outline (reachBottom to reachTop): the open-grown oak's broad
+  // dome; a young one's narrow egg; a forest oak's crown, short-branched
+  // below and wide only near the top, on a trunk that carries on up through
+  // it; an ancient one's low spread, flat on top and open underneath.
+  // Young, open-grown and ancient are also the stages the age slider goes
+  // between (src/age.js), each at its age.
   oak: {
     'open-grown': {},
-    young: { height: [5, 8], spread: [0.6, 0.8], trunk: [0.8, 1.4], girth: [0.07, 0.11], limbs: [3, 4], crooked: 0.2, droop: 0.1, clumpSize: [0.7, 1.1] },
-    'forest-grown': { height: [26, 31], spread: [0.4, 0.55], trunk: [11, 14], girth: [0.45, 0.6], limbs: [3, 4], crooked: 0.25, droop: 0.1, clumpSize: [1.6, 2.4] },
-    ancient: { height: [12, 16], spread: [1.15, 1.45], trunk: [2, 3], girth: [1.1, 1.4], lean: [2, 8], limbs: [4, 6], crooked: 0.75, droop: 0.55, leafiness: 0.45, clumpSize: [1.4, 2.4] },
+    young: { age: 15, height: [5, 8], spread: [0.6, 0.8], trunk: [0.8, 1.4], girth: [0.07, 0.11], limbs: [3, 4], crooked: 0.2, droop: 0.1, clumpSize: [0.7, 1.1], gnarl: 0.02, burrs: 0, stubs: 0, flare: 0.15, roots: 0, reachLow: 0.7, reachMid: 1, reachHigh: 0.75, reachTop: 0.1 },
+    'forest-grown': { height: [26, 31], spread: [0.4, 0.55], trunk: [8, 11], girth: [0.45, 0.6], limbs: [3, 4], crooked: 0.25, droop: 0.1, crowded: 1, clumpSize: [1.6, 2.4], gnarl: 0.08, burrs: 0.1, stubs: 0.5, flare: 0.3, roots: 0.2, reachLow: 0.3, reachMid: 0.6, reachHigh: 1, reachTop: 0.3 },
+    ancient: { age: 500, height: [12, 16], spread: [1.15, 1.45], trunk: [2, 3], girth: [1.1, 1.4], lean: [2, 8], limbs: [4, 6], crooked: 0.75, droop: 0.55, leafiness: 0.45, clumpSize: [1.4, 2.4], gnarl: 0.8, burrs: 0.7, hollows: 0.67, stubs: 0.7, flare: 0.7, roots: 0.7, reachBottom: 0.3, reachLow: 1.1, reachMid: 1, reachHigh: 0.85, reachTop: 0.3 },
   },
   broadleaf: {
     workshop: {},

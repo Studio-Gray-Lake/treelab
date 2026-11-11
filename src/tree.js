@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { DEFAULT_SHAPES, growKind, leafy, swayKind } from './kinds.js';
+import { shadeCrown } from './crownShade.js';
 
 // Trees grown by the workshop's own generator (src/treeShapes.js) and
 // planted as the workshop's forest plants them (src/trees.js, plantTrees):
@@ -56,18 +57,18 @@ export function createPlanter() {
   const models = new Map();
   let round = 0;
 
-  // A grown tree: { kind, seed, variant, tree (buildTree's), ms }.
+  // A grown tree: { kind, seed, variant, tree (buildTree's), ms }. (A
+  // shape that can't be grown throws before the tree it would replace is
+  // let go: that one stays.)
   function model(kind, seed, variant, shape = DEFAULT_SHAPES[kind]) {
     const key = `${kind}|${seed}|${variant}`;
     const stamp = JSON.stringify(shape);
     let m = models.get(key);
-    if (m && m.stamp !== stamp) {
-      forget(m);
-      m = null;
-    }
-    if (!m) {
+    if (!m || m.stamp !== stamp) {
       const start = performance.now();
       const tree = growKind(kind, seed, variant, shape);
+      shadeCrown(tree); // (darker deep in the crown: src/crownShade.js)
+      if (m) forget(m);
       m = { key, kind, seed, variant, tree, stamp, ms: performance.now() - start, grown: round, mottle: 0 };
       // (Its foliage's own colours, kept for mottle().)
       m.base = tree.foliage.attributes.color.array.slice();
@@ -87,15 +88,19 @@ export function createPlanter() {
   // planting's numbers. colorOf(record): a tree's foliage colour (by
   // default its kind's greens, by its tint); mottle(kind): how much its
   // limbs differ (0 to 1, see mottleModel).
-  function plant(group, records, shapes = DEFAULT_SHAPES, { colorOf = greenOf, mottle = () => 0 } = {}) {
-    clear(group);
-    const materials = createMaterials();
+  // shapeOf(kind, variant): the shape that one of a kind's trees is grown
+  // from (by default the kind's own: with several ages, each its own).
+  function plant(group, records, shapes = DEFAULT_SHAPES, { colorOf = greenOf, mottle = () => 0, shapeOf = (kind) => shapes[kind] } = {}) {
+    // Every tree grown before the last planting is taken down: should one
+    // fail to grow, the last trees are left standing.
     const byModel = new Map();
     for (const t of records) {
-      const m = model(t.kind, t.seed, t.variant, shapes[t.kind]);
+      const m = model(t.kind, t.seed, t.variant, shapeOf(t.kind, t.variant));
       if (!byModel.has(m)) byModel.set(m, []);
       byModel.get(m).push(t);
     }
+    clear(group);
+    const materials = createMaterials();
 
     const species = {};
     let drawn = 0;
@@ -176,6 +181,50 @@ function mottleModel(m, k) {
   color.needsUpdate = true;
 }
 const fract = (v) => v - Math.floor(v);
+
+// A grown tree's trunk: its radius about knee high (m). The oak's is what
+// it was grown with; another kind's is measured from its wood there (so
+// low branches make it a little wide).
+export function trunkRadius(tree) {
+  if (tree.layout?.wood?.girth > 0) return tree.layout.wood.girth;
+  const p = tree.wood.attributes.position;
+  let n = 0, cx = 0, cz = 0;
+  for (let i = 0; i < p.count; i++) {
+    if (p.getY(i) < 0.3 || p.getY(i) > 1) continue;
+    cx += p.getX(i);
+    cz += p.getZ(i);
+    n++;
+  }
+  if (!n) return 0.15;
+  let r = 0;
+  for (let i = 0; i < p.count; i++) if (p.getY(i) >= 0.3 && p.getY(i) <= 1) r = Math.max(r, Math.hypot(p.getX(i) - cx / n, p.getZ(i) - cz / n));
+  return Math.min(1.5, r);
+}
+
+// Where a planted group's trunks stand and how thick they are, for whoever
+// walks among them: [{ x, z, r }] (m).
+export function trunksOf(group) {
+  const trunks = [];
+  for (const species of Object.values(group.userData.species ?? {})) {
+    for (const variant of species.variants) {
+      const r = trunkRadius(variant.model.tree);
+      for (const t of variant.trees) trunks.push({ x: t.x, z: t.z, r: r * t.size });
+    }
+  }
+  return trunks;
+}
+
+// How high a planted group's trees reach above `base` (m): each tree's foot
+// (on the hills, where it stands) plus its height as planted.
+export function treetops(group, base = 0) {
+  let top = 0;
+  for (const species of Object.values(group.userData.species ?? {})) {
+    for (const variant of species.variants) {
+      for (const t of variant.trees) top = Math.max(top, t.y - base + variant.height * t.size);
+    }
+  }
+  return top;
+}
 
 // The foliage of a planted group coloured anew (no regrowing).
 export function recolor(group, colorOf) {

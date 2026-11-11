@@ -124,8 +124,11 @@ test('binding again leaves nothing of the last wind behind', () => {
   const children = scene.children.length;
   const keys = listeners.size;
   const before = rig.wind;
+  let released = 0;
+  rig.windView.texture.addEventListener('dispose', () => released++);
   for (let i = 0; i < 3; i++) rig.bind({ trees, terrain });
   assert.notEqual(rig.wind, before);
+  assert.equal(released, 1, 'the map of the last wind was never let go');
   assert.equal(panel.rows.size, rows, 'the wind panel grew rows');
   assert.equal(scene.children.length, children, 'old wind views stayed in the scene');
   assert.equal(listeners.size, keys, 'old V-key listeners stayed');

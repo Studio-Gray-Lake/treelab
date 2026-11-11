@@ -293,3 +293,61 @@ test('limbs mottle in autumn and come back as grown in summer', () => {
   planter.mottle(() => 0);
   assert.deepEqual(Array.from(color.array), before);
 });
+
+// --- Big forests -------------------------------------------------------------------
+
+test('a forest can reach 160 m from the middle, as thin as 10 trees a hectare', () => {
+  const forest = { ...defaultSettings().forest, radius: 160, density: 10 };
+  const { records } = placeForest(forest, flat);
+  const expected = 10 * (Math.PI * 160 * 160) / 10000;
+  assert.ok(Math.abs(records.length - expected) < expected * 0.2, `${records.length} trees for ${expected.toFixed(0)}`);
+  assert.ok(records.some((r) => Math.hypot(r.x, r.z) > 140), 'no tree near the edge');
+});
+
+test('over the cap, a forest is planted thinner all over, not cut off at the end of its rows', async () => {
+  for (const pattern of ['rows', 'jittered grid', 'even spacing']) {
+    const forest = { ...defaultSettings().forest, area: 'square', radius: 160, density: 3000, pattern };
+    const { records, report } = placeForest(forest, flat);
+    assert.ok(records.length <= MAX_TREES, `${pattern}: ${records.length} trees`);
+    assert.ok(report.thinnedTo > 0 && report.thinnedTo < 3000, `${pattern}: thinned to ${report.thinnedTo}`);
+    for (const [axis, sign] of [['x', 1], ['x', -1], ['z', 1], ['z', -1]]) {
+      assert.ok(records.some((r) => sign * r[axis] > 130), `${pattern}: no trees out at ${sign > 0 ? '+' : '-'}${axis}`);
+    }
+  }
+});
+
+test('the hills grow with the forest, whole under every tree', async () => {
+  const { groundFor } = await import('../src/terrain.js');
+  assert.deepEqual(groundFor(30), { half: 150, cells: 200 });
+  const big = groundFor(160 * Math.SQRT2);
+  assert.ok(big.half * 0.75 >= 160 * Math.SQRT2, `the hills fade out at ${big.half * 0.75} m, inside the forest`);
+  assert.ok(big.cells <= 320);
+  const terrain = createTerrain({ seed: 2, height: 8, size: 30 }, big);
+  assert.ok(Math.abs(terrain.heightAt(150, 150)) > 0 || Math.abs(terrain.heightAt(140, -150)) > 0, 'flat at the forest\'s corner');
+});
+
+test('the ground\'s facets are uneven: its corners sit off the grid, its outline stays square', () => {
+  const terrain = createTerrain({ seed: 4, height: 10, size: 25, roughness: 0.6 });
+  const pos = terrain.mesh.geometry.attributes.position;
+  const step = (2 * terrain.half) / 200;
+  let off = 0, edge = 0, far = 0;
+  for (let i = 0; i < pos.count; i += 7) {
+    const x = pos.getX(i), z = pos.getZ(i);
+    const dx = Math.abs(x / step - Math.round(x / step)), dz = Math.abs(z / step - Math.round(z / step));
+    far = Math.max(far, dx, dz);
+    if (Math.abs(Math.abs(x) - terrain.half) < 1e-6 || Math.abs(Math.abs(z) - terrain.half) < 1e-6) edge++;
+    else if (dx > 0.02 || dz > 0.02) off++;
+    assert.ok(Math.abs(x) <= terrain.half + 1e-6 && Math.abs(z) <= terrain.half + 1e-6, 'a corner outside the ground');
+  }
+  assert.ok(off > (pos.count / 7) * 0.8, `only ${off} corners off the grid`);
+  assert.ok(edge > 50, 'no corners on the outline');
+  assert.ok(far < 0.25, `a corner ${far.toFixed(2)} of a square off its place`);
+  // (And no facet is folded over: every one faces up.)
+  const normal = terrain.mesh.geometry.attributes.normal;
+  for (let i = 0; i < normal.count; i += 3) assert.ok(normal.getY(i) > 0.2, `facet ${i / 3} faces ${normal.getY(i).toFixed(2)} up`);
+  // (Both ways of cutting a patch are used.)
+  const same = (a, b) => pos.getX(a) === pos.getX(b) && pos.getZ(a) === pos.getZ(b);
+  let oneWay = 0, other = 0;
+  for (let t = 0; t + 5 < pos.count; t += 6) same(t, t + 3) ? oneWay++ : other++;
+  assert.ok(oneWay > 5000 && other > 5000, `${oneWay} patches cut one way, ${other} the other`);
+});

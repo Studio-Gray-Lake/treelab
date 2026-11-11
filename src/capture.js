@@ -5,8 +5,10 @@ import * as THREE from 'three';
 const MARK = 'TreeLab · Studio Gray Lake';
 
 // The view as a PNG, `scale` times the screen's size (as far as the GPU
-// allows), with "TreeLab" in the corner if `mark`.
-export async function capture({ renderer, scene, camera, scale = 1, mark = true }) {
+// allows), with "TreeLab" in the corner if `mark`. draw: draws a frame (the
+// scene, and anything laid over it, such as the light shafts); frames: how
+// many are drawn first (the light shafts settle over a few frames).
+export async function capture({ renderer, scene, camera, draw = () => renderer.render(scene, camera), frames = 1, scale = 1, mark = true }) {
   const size = renderer.getSize(new THREE.Vector2());
   const ratio = renderer.getPixelRatio();
   const gl = renderer.getContext();
@@ -21,12 +23,12 @@ export async function capture({ renderer, scene, camera, scale = 1, mark = true 
   try {
     renderer.setPixelRatio(1);
     renderer.setSize(width, height, false);
-    renderer.render(scene, camera);
+    for (let i = 0; i < frames; i++) draw();
     g.drawImage(renderer.domElement, 0, 0); // (before the browser shows the frame, so the picture is still there)
   } finally {
     renderer.setPixelRatio(ratio);
     renderer.setSize(size.x, size.y, false);
-    renderer.render(scene, camera);
+    draw();
   }
 
   if (mark) {

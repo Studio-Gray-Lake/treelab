@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { TREE_KINDS, TREE_SHAPES, buildTree, variantSeed } from '@workshop/treeShapes.js';
-import { GREENS, createPlanter, defaultShapes, resetShape } from '../src/tree.js';
+import { GREENS, createPlanter, defaultShapes, resetShape, treetops } from '../src/tree.js';
 import { KINDS } from '../src/kinds.js';
 
 // One tree planted at the middle: its group and its grown tree.
@@ -156,4 +156,32 @@ test('each planting has its own materials, the last ones thrown away', () => {
   planter.plant(group, [{ ...record }], TREE_SHAPES);
   assert.ok(disposed);
   assert.notEqual(group.userData.materials.leaves, old);
+});
+
+test('a planting that cannot be grown leaves the last trees standing', () => {
+  const planter = createPlanter();
+  const group = new THREE.Group();
+  const shapes = defaultShapes();
+  const at = (x, kind) => ({ x, y: 0, z: 0, size: 1, turn: 0, tint: 0.5, kind, seed: 7, variant: 0 });
+  planter.plant(group, [at(0, 'fir'), at(5, 'pine')], shapes);
+  const standing = [...group.children];
+  const kept = planter.model('pine', 7, 0, shapes.pine).tree;
+  // (The fir grows; the pine, with no height to grow to, cannot.)
+  shapes.fir.height[1] += 1;
+  const broken = { ...shapes, pine: { ...shapes.pine, height: null } };
+  assert.throws(() => planter.plant(group, [at(0, 'fir'), at(5, 'pine')], broken));
+  assert.deepEqual(group.children, standing, 'the last planting was taken down');
+  assert.ok(group.userData.species.pine, 'the last planting was forgotten');
+  assert.equal(planter.model('pine', 7, 0, shapes.pine).tree, kept, 'the tree that could not be replaced was let go');
+});
+
+test('the treetops of a planting: the tallest tree as planted, from where it stands', () => {
+  const planter = createPlanter();
+  const group = new THREE.Group();
+  assert.equal(treetops(group), 0, 'an empty planting');
+  const at = (x, y, size) => ({ x, y, z: 0, size, turn: 0, tint: 0.5, kind: 'fir', seed: 7, variant: 0 });
+  planter.plant(group, [at(0, 0, 1), at(8, 3, 1.2)], TREE_SHAPES);
+  const { height } = planter.model('fir', 7, 0, TREE_SHAPES.fir).tree;
+  assert.ok(Math.abs(treetops(group) - (3 + 1.2 * height)) < 1e-9, 'the bigger tree on the hill');
+  assert.ok(Math.abs(treetops(group, 2) - (1 + 1.2 * height)) < 1e-9, 'above ground 2 m up');
 });

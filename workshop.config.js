@@ -2,9 +2,10 @@ import path from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Where TreeLab's trees, wind and sway come from.
+// Where TreeLab's trees, wind and sway come from, and two small parts of
+// its figure's walk (the legs' solver and the game pad's reader).
 //
-// TreeLab runs on copies of six files from the 3D Procedural Animation
+// TreeLab runs on copies of eight files from the 3D Procedural Animation
 // Workshop, kept in vendor/workshop/. The workshop is their only home: the
 // copies are never edited here. `npm run sync` copies them again from the
 // workshop, and tests/vendor.test.js says when they've fallen behind.
@@ -18,7 +19,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const VENDOR_DIR = path.join(here, 'vendor', 'workshop');
 
 // The code copied (from the workshop's src folder).
-export const WORKSHOP_FILES = ['treeShapes.js', 'treeSway.js', 'spring.js', 'wind.js', 'windView.js'];
+// (ik.js: a leg bent to put its ankle where it's asked; gamepad.js: a game
+// controller read through the browser. For the figure that walks the
+// forest: src/figure.js, src/main.js.)
+export const WORKSHOP_FILES = ['treeShapes.js', 'treeSway.js', 'spring.js', 'wind.js', 'windView.js', 'ik.js', 'gamepad.js'];
 
 // And other files, by where they are from its src folder: the figure that
 // stands by the trees for scale (the workshop's character, built in Blender).

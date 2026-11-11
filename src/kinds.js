@@ -1,5 +1,5 @@
 import { TREE_KINDS, TREE_SHAPES, buildTree, variantSeed } from '@workshop/treeShapes.js';
-import { OAK_LIMITS, OAK_SHAPE, buildOak } from './oak/oak.js';
+import { OAK_CHOICES, OAK_LIMITS, OAK_SHAPE, buildOak } from './oak/oak.js';
 
 // Every kind of tree TreeLab grows: its own (grown by its own code, at their
 // real size: the English oak) and the workshop's three (its copied
@@ -14,6 +14,10 @@ export const DEFAULT_SHAPES = { oak: OAK_SHAPE, ...TREE_SHAPES };
 
 // The sliders of TreeLab's own kinds (the workshop's are in src/limits.js).
 export const KIND_LIMITS = { oak: OAK_LIMITS };
+
+// Their settings that are a choice from a list, not a slider: { kind: {
+// setting: { name: value } } }.
+export const KIND_CHOICES = { oak: OAK_CHOICES };
 
 export const isOwn = (kind) => OWN_KINDS.includes(kind);
 
