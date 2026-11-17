@@ -41,6 +41,7 @@ import { attachTooltips } from './tooltip.js';
 import { shapeTip, tip } from './tips.js';
 import { ABOUT, showsWelcome, turnWelcomeOff } from './welcome.js';
 import { versionLabel, versionSays } from './version.js';
+import { NEWS, RELEASES, dayOf } from './changelog.js';
 
 // TreeLab: the Tree tab grows one tree, or a grid of them to compare; the
 // Forest tab plants them on hills. Both use the workshop's trees, wind and
@@ -723,10 +724,46 @@ const noteEl = document.getElementById('note');
 const versionEl = document.getElementById('version');
 const showVersion = (build) => {
   versionEl.textContent = versionLabel(build);
-  versionEl.title = versionSays(build);
+  versionEl.title = `${versionSays(build)} Click for what each release brought.`;
 };
 showVersion(__TREELAB__);
 if (__TREELAB__.dev) fetch('/__treelab-build').then((answer) => answer.json()).then(showVersion).catch(() => {});
+
+// The feature log (./changelog.js), opened by the version: what each release brought, newest first, each with
+// a link to its news post where it has one. (On the studio's own site its links go by their path alone, as
+// the welcome card's does, so they stay on whichever copy of the site this is.)
+{
+  const onSite = (address) => (import.meta.env.MODE === 'site' ? (({ pathname, hash }) => pathname + hash)(new URL(address)) : address);
+  const card = document.getElementById('log'), list = document.getElementById('log-list');
+  const make = (tag, text, parent) => {
+    const element = document.createElement(tag);
+    if (text) element.textContent = text;
+    parent?.append(element);
+    return element;
+  };
+  for (const release of RELEASES) {
+    const head = make('h3', `TreeLab ${release.version} `, list);
+    make('span', dayOf(release.date), head);
+    const about = make('p', `${release.name}. `, list);
+    about.className = 'about';
+    if (release.post) {
+      const link = make('a', 'Read the post', about);
+      link.href = onSite(release.post);
+      link.target = '_blank';
+      link.rel = 'noopener';
+    }
+    const lines = make('ul', '', list);
+    for (const change of release.changes) make('li', change, lines);
+  }
+  document.getElementById('log-news').href = onSite(NEWS);
+  document.getElementById('news-link').href = onSite(NEWS);
+  document.getElementById('log-ok').addEventListener('click', () => card.close());
+  versionEl.addEventListener('click', () => {
+    card.showModal?.();
+    card.scrollTop = 0;
+    document.getElementById('log-ok').focus();
+  });
+}
 if (import.meta.env.DEV) {
   const w = __WORKSHOP__;
   document.getElementById('source').textContent = w.live ? `Reading the workshop's own files: ${w.dir}` : `Workshop files synced ${w.synced}`;

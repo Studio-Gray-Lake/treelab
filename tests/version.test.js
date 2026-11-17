@@ -20,7 +20,7 @@ test('the version beside the name: the website\'s by its day, a build of your ow
 
 test('the page has a place for it in its title, and the build tells it what to say', () => {
   const page = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(page, /<h1>TreeLab <span id="version"><\/span><\/h1>/);
+  assert.match(page, /<h1>TreeLab <button id="version" type="button" aria-haspopup="dialog"><\/button><\/h1>/);
   const config = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
   assert.match(config, /__TREELAB__: JSON\.stringify\(buildOf\(mode, command === 'serve'\)\)/);
   // (A build for the website names no commit of the private repository.)

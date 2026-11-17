@@ -101,7 +101,7 @@ Two tabs, one set of settings.
   - *take a screenshot*: a PNG at 1×, 2× or 4× the screen, with or without "TreeLab · Studio Gray Lake" in the corner. *share a screenshot…* opens the system's share sheet where the browser has one; otherwise it downloads the picture and offers the link for X, Bluesky, Reddit or Facebook.
   - *download the model (.glb)*: the trees shown, standing still, flat-shaded as on screen, with the forest's ground cut to the forest if you like. *Instanced* is smallest and uses glTF's `EXT_mesh_gpu_instancing` (three.js, Babylon.js, Godot, Blender 3.6 and later); *one node a tree* works in every glTF tool. The file carries its settings and link.
 
-Beside its name TreeLab says which TreeLab it is, so a picture, a link or a fault can be matched to the code that made it: its version and the day it was built (the website's: `0.3.0 · 2026-11-11`), or, in a git checkout, the commit it was built from (`0.3.0 · 18d23c1`); on the dev server it says so, with a `+` when there is work not yet committed (`0.3.0 · dev · 18d23c1+`). Hover over it for the same in a sentence. A build made for the website names no commit.
+Beside its name TreeLab says which TreeLab it is, so a picture, a link or a fault can be matched to the code that made it: its version and the day it was built (the website's: `0.3.0 · 2026-11-11`), or, in a git checkout, the commit it was built from (`0.3.0 · 18d23c1`); on the dev server it says so, with a `+` when there is work not yet committed (`0.3.0 · dev · 18d23c1+`). Hover over it for the same in a sentence. A build made for the website names no commit. Click it for the feature log: what each release brought, newest first, with its day and a link to its news post where it has one (`src/changelog.js`; a release adds its entry at the top, and a test holds the top entry to the version in `package.json`). The card's last line links to the studio's news.
 
 A first visit opens with a welcome card: what TreeLab is, how to look round, a link to the studio's news post about it, and on a phone a line saying it works best on a computer. *OK* (or Enter, or Escape) closes it until the next visit; *Don't show this again* is kept in your browser only, so where the browser keeps nothing the card shows again. A share link opens straight on its view, without the card.
 
@@ -154,6 +154,7 @@ Settings files and links from older or newer TreeLabs still load: settings TreeL
 | `src/outlineEditor.js` | The crown's outline as a drawing in the panel: five dots to drag |
 | `src/rangeSlider.js` | The two-handled row for a [least, most] setting |
 | `src/tips.js`, `src/tooltip.js` | Every row's tooltip, and showing it |
+| `src/changelog.js` | The feature log: what each release brought, newest first |
 | `src/version.js` | Which TreeLab this is, as shown beside its name: its version, and its build (the day, or the commit) |
 | `src/welcome.js` | The welcome card: whether a visit opens with it, remembering "don't show this again", and the address its link goes to |
 | `workshop.config.js`, `scripts/` | The copied workshop files, and `npm run sync`; `scripts/check-browser.mjs`: the starting views drawn in a real browser and checked (`npm run check:browser`); `scripts/bake-clips.mjs`: Mixamo's clips fitted to the figure (`npm run bake:clips`); `scripts/rig.js`: the figure as bare bones, for scripts and tests |

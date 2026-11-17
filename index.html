@@ -42,7 +42,12 @@
       }
       #info { position: fixed; top: 12px; left: 12px; max-width: min(calc(270px * var(--s)), 30vw, calc(100vw - 24px)); padding: calc(8px * var(--s)) calc(12px * var(--s)); }
       #info h1 { margin: 0; font-size: calc(15px * var(--s)); letter-spacing: 0.01em; }
-      #info h1 #version { margin-left: 0.3em; font-size: 0.62em; font-weight: 400; letter-spacing: 0; color: var(--ink-soft); white-space: nowrap; }
+      #info h1 #version {
+        margin: 0 0 0 0.3em; padding: 0; border: 0; background: none; font: inherit; font-size: 0.62em; font-weight: 400; letter-spacing: 0;
+        color: var(--ink-soft); white-space: nowrap; cursor: pointer;
+      }
+      #info h1 #version:hover, #info h1 #version:focus-visible { color: var(--accent); text-decoration: underline; }
+      #info h1 #version:empty { display: none; }
       #info .sub { margin: 2px 0 8px; color: var(--ink-soft); }
       #stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; }
       #stats dt { color: var(--ink-soft); }
@@ -179,6 +184,17 @@
       }
       dialog button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 
+      /* The feature log, behind the version beside the name (src/changelog.js): what each release brought. */
+      #log { box-sizing: border-box; max-width: min(calc(460px * var(--s)), calc(100vw - 48px)); max-height: calc(100vh - 48px); overflow: auto; }
+      #log h3 { margin: 12px 0 2px; font-size: calc(13px * var(--s)); }
+      #log h3 span { font-weight: 400; color: var(--ink-soft); }
+      #log p.about { margin: 0 0 4px; }
+      #log ul { margin: 0 0 10px; padding-left: 1.2em; color: var(--ink-soft); }
+      #log li { margin: 0 0 2px; }
+      #log a { color: var(--accent); }
+      #log .row { margin: 12px 0 0; }
+      #log button:focus-visible, #log a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
       /* The welcome card, on a first visit (src/welcome.js). One more line on a phone. */
       #welcome { box-sizing: border-box; }
       #welcome > :last-child { margin-bottom: 0; }
@@ -200,7 +216,7 @@
     <div id="app"></div>
     <div id="info" class="card">
       <div id="info-top">
-        <h1>TreeLab <span id="version"></span></h1>
+        <h1>TreeLab <button id="version" type="button" aria-haspopup="dialog"></button></h1>
         <button class="fold" data-folds="info" aria-controls="info-body" aria-expanded="true" aria-label="Fold this card away"></button>
       </div>
       <div id="info-body">
@@ -209,7 +225,7 @@
         <p id="note" role="status"></p>
         <p id="hint">Drag to turn, scroll to zoom. Double-click a tree to see it alone. H hides the panels.</p>
         <p id="source"></p>
-        <p id="credit">A free tech demo by Studio Gray Lake. <a href="https://github.com/Studio-Gray-Lake/treelab" target="_blank" rel="noopener">Source</a> · <a href="THIRD-PARTY-NOTICES.txt" target="_blank" rel="noopener">Licences</a></p>
+        <p id="credit">A free tech demo by Studio Gray Lake. <a id="news-link" href="https://studiograylake.com/news.html" target="_blank" rel="noopener">News</a> · <a href="https://github.com/Studio-Gray-Lake/treelab" target="_blank" rel="noopener">Source</a> · <a href="THIRD-PARTY-NOTICES.txt" target="_blank" rel="noopener">Licences</a></p>
       </div>
     </div>
     <div id="panel" class="card">
@@ -233,6 +249,14 @@
         <a class="button" id="share-facebook" target="_blank" rel="noopener">Facebook</a>
       </div>
       <div class="row"><button id="share-close">Close</button></div>
+    </dialog>
+    <dialog id="log" aria-labelledby="log-title">
+      <h2 id="log-title">What's new in TreeLab</h2>
+      <div id="log-list"></div>
+      <div class="row">
+        <button class="primary" id="log-ok">OK</button>
+        <a class="button" id="log-news" target="_blank" rel="noopener">All the news</a>
+      </div>
     </dialog>
     <dialog id="welcome" aria-labelledby="welcome-title">
       <h2 id="welcome-title">Welcome to TreeLab</h2>

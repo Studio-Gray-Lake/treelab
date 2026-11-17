@@ -18,7 +18,8 @@ const siteAnalytics = {
 // version, the day, and the git commit it was made from if this is a
 // checkout (a downloaded copy has none). A build made for the website
 // carries no commit: its version and its day say which it is.
-const VERSION = JSON.parse(readFileSync('package.json', 'utf8')).version;
+// (Read each time it's asked for: on a running dev server the version can change under it.)
+const version = () => JSON.parse(readFileSync('package.json', 'utf8')).version;
 function commit() {
   try {
     const git = (args) => execSync(`git ${args}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
@@ -27,7 +28,7 @@ function commit() {
     return {};
   }
 }
-const buildOf = (mode, dev) => ({ version: VERSION, date: new Date().toISOString().slice(0, 10), dev, ...(mode === 'site' ? {} : commit()) });
+const buildOf = (mode, dev) => ({ version: version(), date: new Date().toISOString().slice(0, 10), dev, ...(mode === 'site' ? {} : commit()) });
 // (The dev server tells the page afresh each time it loads: the code changes under a running server.)
 const devBuild = {
   name: 'treelab-build',
