@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CROWN_SHARE, measure, mulberry32, roughen } from '@workshop/treeShapes.js';
+import { CROWN_SHARE, measure, mulberry32 } from '@workshop/treeShapes.js';
 import { pushesOf } from './chance.js';
 import { massGeometry } from './leafMass.js';
 
@@ -39,9 +38,8 @@ import { massGeometry } from './leafMass.js';
 //
 // Where each burr, hollow, root and stub is, the layout says (each from the
 // tree's own chance, so none moves when another slider does); what they
-// look like is here. The leaves are still clusters as the workshop's mesher
-// drew them (a roughened ball, squashed, its underside flattened and
-// darker), for now.
+// look like is here. The leaves are masses (./leafMass.js): each big limb's
+// clusters merged into billowing surfaces, hollow underneath.
 //
 // What comes out is what the workshop's mesher gave, so the workshop's sway
 // and TreeLab's planter take it: { wood, foliage (BufferGeometry, not
@@ -54,6 +52,7 @@ const BROKEN = [0.62, 0.55, 0.42];      // wood without bark, where a branch bro
 const FACET = 0.4;                      // m: about how wide a side of thick wood is
 const CURVED = [0.14, 0.28];            // wood is drawn as a curve through its steps if it's at least this thick: m, and as a share of the trunk's thickness (the more of the two)
 const COLLARED = 0.1;                   // m: a branch at least this thick has its collar drawn (a thinner one's is too small to see)
+const INSIDE = 0.6;                     // a branch's first ring, at its parent's middle, is at most this share of its parent's thickness
 const UNEVEN = 8;                       // wood of at least this many sides is drawn with an uneven mesh
 const WIDER = 1.3;                      // a limb's sides may be this many times as wide as the trunk's
 
@@ -102,20 +101,23 @@ export function meshOak(layout) {
   const lumps = pushesOf(w.seed);
   const bark = (y, shade = 1) => {
     const t = clamp(y / Math.max(1, w.height * 0.5)), f = t * t * (3 - 2 * t);
-    return [0, 1, 2].map((k) => (BARK_FOOT[k] + (BARK_LIMBS[k] - BARK_FOOT[k]) * f) * shade);
+    // (The kind's own bark, if it has one: the oak's otherwise.)
+    const foot = w.bark?.foot ?? BARK_FOOT, limbs = w.bark?.limbs ?? BARK_LIMBS;
+    return [0, 1, 2].map((k) => (foot[k] + (limbs[k] - foot[k]) * f) * shade);
   };
   const trunk = w.runs.find((run) => run.trunk);
   const look = { bark, lumps, sidesOf: sidesOfTree(w) };
   for (const run of w.runs) runInto(out, run, w, look);
   for (const stub of stubsOf(w, trunk)) stubInto(out, stub, bark);
   for (const root of w.roots) rootInto(out, root, w, look);
+  // (A pine's twigs, bare below their plumes of needles.)
+  for (const bough of layout.leaves?.boughs ?? []) if (bough.style === 'brushes') for (const twig of twigsOf(bough)) stickInto(out, twig, bark);
 
   const wood = geometryOf(out);
-  // The leaves: each limb's clusters as one mass (./leafMass.js: a test,
-  // for now), or every cluster a ball of its own.
-  const foliage = !layout.clumps.length ? geometryOf({ position: [], color: [], branch: [] })
-    : layout.leaves?.merged ? massGeometry(layout.clumps, layout.leaves)
-    : mergeGeometries(layout.clumps.map(clumpGeometry));
+  // The leaves: each limb's clusters as masses (./leafMass.js); a kind with needles, twigs with needles.
+  const foliage = layout.leaves?.boughs?.length ? needlesGeometry(layout.leaves.boughs)
+    : !layout.clumps.length ? geometryOf({ position: [], color: [], branch: [] })
+    : massGeometry(layout.clumps, layout.leaves);
   const lean = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(Math.sin(layout.lean.toward), 0, -Math.cos(layout.lean.toward)), layout.lean.angle);
   wood.applyMatrix4(lean);
   foliage.applyMatrix4(lean);
@@ -230,7 +232,8 @@ export function shaped(run, w) {
   // Its collar: where it leaves its parent it's thicker (never as thick
   // as the parent), and thins to itself within a parent's width or two.
   // It's drawn from inside the parent's wood, out.
-  if (run.side && run.parent > 0 && points[0].r >= COLLARED) {
+  const collared = run.side && run.parent > 0 && points[0].r >= COLLARED;
+  if (collared) {
     const lengths = lengthsOf(points), whole = lengths.at(-1);
     const marks = [0.55, 1, 1.45, 2.1].map((share) => share * run.parent).filter((along) => along < whole * 0.92);
     if (!marks.length) return points; // (too short to leave its parent's wood: as it is)
@@ -241,11 +244,16 @@ export function shaped(run, w) {
       const out = Math.max(0, point.along - run.parent);
       point.r = Math.min(run.parent * 0.88, point.r * (1 + 0.55 * Math.exp(-out / (0.45 * run.parent + 0.05))));
     }
-    points = through;
+    // Its first ring is at its parent's middle and well inside its wood, so
+    // the tube's open end is never seen. (It was a little way out along
+    // the branch, at the collar's full width: where a branch leaves its
+    // parent at a slant, that ring's rim stood out of the parent's side,
+    // an open wedge beside the joint.)
+    points = [{ ...pointAt(points, lengths, 0), r: Math.min(through[0].r, run.parent * INSIDE) }, ...through];
   }
-  // (Never thicker further out; and its last step thins to a twig, where
-  // the twigs too fine to draw carry on.)
-  for (let i = 1; i < points.length; i++) points[i].r = Math.min(points[i].r, points[i - 1].r);
+  // (Never thicker further out, past where a branch's collar is widest; and
+  // its last step thins to a twig, where the twigs too fine to draw carry on.)
+  for (let i = collared ? 2 : 1; i < points.length; i++) points[i].r = Math.min(points[i].r, points[i - 1].r);
   points.at(-1).r = Math.max(0.012, points.at(-1).r * 0.4);
   return points;
 }
@@ -259,7 +267,8 @@ function runInto(out, run, w, look) {
   // (A trunk with marks on it gets finer sides, for them to show; a limb,
   // sides about as wide as the trunk's.)
   const sidesOf = look.sidesOf ?? sidesFor;
-  const sides = run.trunk ? trunkSides(points[0].r, w) : sidesOf(points[0].r);
+  // (A branch with a collar: by the collar's width, not by its narrower first ring inside its parent.)
+  const sides = run.trunk ? trunkSides(points[0].r, w) : sidesOf(Math.max(points[0].r, points[1].r));
   // (Each hollow's middle on a corner of the trunk's mesh, the nearest: a
   // hollow between corners would be missed, or lopsided.)
   let shape = null;
@@ -283,12 +292,14 @@ function runInto(out, run, w, look) {
 // used to tilt its end ring by its own side of a bend only, and a wedge
 // opened between them); and the later one starts a little back inside the
 // earlier, so no notch shows where their sides differ.
-export function tubesOf(points, sides = sidesFor(points[0].r), sidesOf = sidesFor) {
+export function tubesOf(points, sides = sidesFor(Math.max(points[0].r, points[1]?.r ?? 0)), sidesOf = sidesFor) {
   const centres = points.map((point) => new THREE.Vector3(...point.p));
   const ways = centres.map((c, i) => {
     const back = i > 0 ? c.clone().sub(centres[i - 1]).normalize() : null;
     const ahead = i < centres.length - 1 ? centres[i + 1].clone().sub(c).normalize() : null;
-    return (back && ahead ? back.add(ahead) : back ?? ahead).normalize();
+    // (Where a run doubles back on itself the two cancel: the way ahead, then.)
+    const both = back && ahead ? back.clone().add(ahead) : null;
+    return (both && both.lengthSq() > 0.01 ? both : ahead ?? back).normalize();
   });
   const tubes = [];
   let from = 0, lap = null;
@@ -524,30 +535,328 @@ function rootInto(out, root, w, look) {
   draw({ x: Math.cos(root.angle) * start, z: Math.sin(root.angle) * start, angle: root.angle, long: root.long, thick, seed: root.seed, forks: root.long > 2 ? { at, turn } : null });
 }
 
-// --- Leaves -------------------------------------------------------------------------------
+// --- Needles ------------------------------------------------------------------------------
 
-// A cluster of leaves: a roughened ball, squashed, its underside flattened
-// and darker (as the workshop's mesher draws a clump).
-function clumpGeometry(c) {
-  const g = new THREE.IcosahedronGeometry(c.radius, 1);
-  g.deleteAttribute('uv');
-  roughen(g, c.rough * c.radius, mulberry32(c.seed));
-  const pos = g.attributes.position;
-  const branch = new Float32Array(pos.count * 3);
-  const color = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) {
-    let y = pos.getY(i) * c.squash;
-    if (y < 0) y *= 0.6;
-    pos.setY(i, y);
-    const shade = c.shade * (0.62 + 0.38 * THREE.MathUtils.smoothstep(y / (c.radius * c.squash), -0.7, 0.8));
-    color.fill(shade, i * 3, i * 3 + 3);
-    branch[i * 3] = c.limb.phase;
-    branch[i * 3 + 1] = c.limb.reach1;
-    branch[i * 3 + 2] = c.limb.heading;
-  }
-  g.rotateY(c.turn).translate(...c.center);
-  g.setAttribute('branch', new THREE.BufferAttribute(branch, 3));
-  g.setAttribute('color', new THREE.BufferAttribute(color, 3));
-  g.computeVertexNormals();
-  return g;
+// A kind with needles carries twigs along every branch (a bough: the
+// branch with its twigs and their needles), from a little way out to its
+// end, longest about two thirds along. Two ways, by the kind:
+//
+// - fronds (a fir's): the twigs leave the branch left and right, level,
+//   pointing forward, and the needles are one sheet draped over them
+//   (drapeInto): the branch is a flat spray with a toothed edge. (The
+//   leader's twigs, all round an upright shoot, are each a blade of
+//   needles.)
+// - brushes (a pine's): the twigs leave the branch all round it and turn
+//   up, bare (they're drawn as wood), each ending in a plume of needles:
+//   crowns of needles round the shoot, each crown's needles joined at
+//   their feet into one piece with a zigzag edge (crownsOf).
+//
+// A simplification, said plainly: a blade is a branchlet's needles drawn as
+// one piece, and a pine's needle is a bundle of needles drawn as one,
+// thicker than life (true needles are too thin to draw at a tree's
+// distance). They move with their branch in the wind.
+
+const GOLDEN_TURN = Math.PI * (3 - Math.sqrt(5));
+const BLADE = 1.4; // m: a fir's twig longer than this carries blades of its own
+const SHORTEST = 0.4; // m: no twig is shorter than this (a short branch near the top still carries a spray)
+
+// How long a bough's twigs are along it (t: 0 where its needles start, 1
+// its tip), as a share of the longest: quickly out, longest two thirds
+// along, drawn in to its tip.
+const boughProfile = (t) => (t < 0.65 ? 0.08 + 0.92 * Math.pow(t / 0.65, 0.7) : 1 - 0.8 * Math.pow((t - 0.65) / 0.35, 1.6));
+
+const unit = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const along = (p, d, far) => [p[0] + d[0] * far, p[1] + d[1] * far, p[2] + d[2] * far];
+const mixed = (a, ka, b, kb) => [a[0] * ka + b[0] * kb, a[1] * ka + b[1] * kb, a[2] * ka + b[2] * kb];
+// Level and across a direction (for one that stands upright: any level way).
+const acrossOf = (d) => (Math.hypot(d[0], d[2]) > 1e-4 ? unit([-d[2], 0, d[0]]) : [1, 0, 0]);
+
+// A triangle put the way round that faces `toward`.
+function facing(out, a, b, c, toward) {
+  const u = [b.v[0] - a.v[0], b.v[1] - a.v[1], b.v[2] - a.v[2]], v = [c.v[0] - a.v[0], c.v[1] - a.v[1], c.v[2] - a.v[2]];
+  const n = cross(u, v);
+  if (n[0] * toward[0] + n[1] * toward[1] + n[2] * toward[2] < 0) triangle(out, a, c, b);
+  else triangle(out, a, b, c);
 }
+
+// A bough's twigs: [{ base, dir, length, sway, way, side }], each from the
+// branch at `base`, `length` m toward `dir` (`way`: the way the branch
+// goes there; `side`: level, across it); the last is the branch's own end.
+export function twigsOf(bough) {
+  const points = bough.points, lengths = lengthsOf(points), whole = lengths.at(-1);
+  const from = whole * bough.bare, leafy = whole - from;
+  const brushes = bough.style === 'brushes';
+  const count = Math.max(brushes ? 3 : 4, Math.round(leafy * bough.twigs * (bough.leader ? 2.5 : 1)));
+  const chance = (i, k) => cornerChance(i, k, bough.seed);
+  const high = bough.high ?? 0.5;
+  const twigs = [];
+  let side = [1, 0, 0];
+  const wayAt = (at) => {
+    const a = pointAt(points, lengths, Math.max(0, at - 0.3)), b = pointAt(points, lengths, Math.min(whole, at + 0.3));
+    return unit([b.p[0] - a.p[0], b.p[1] - a.p[1], b.p[2] - a.p[2]]);
+  };
+  for (let i = 0; i < count; i++) {
+    const t = (i + 0.5 + (chance(i, 1) - 0.5) * 0.5) / count;
+    const at = pointAt(points, lengths, from + leafy * t), way = wayAt(from + leafy * t);
+    if (Math.hypot(way[0], way[2]) > 1e-3) side = acrossOf(way); // (where the branch stands upright: as the twig before)
+    const lift = cross(side, way);
+    const length = Math.max(SHORTEST * (brushes ? 0.6 : 1), bough.half * boughProfile(t) * (0.8 + 0.4 * chance(i, 2)));
+    let dir;
+    if (brushes) {
+      // All round the branch, in a spiral; forward, and turning up.
+      const turn = i * GOLDEN_TURN + chance(i, 3), out = mixed(side, Math.cos(turn), lift, Math.sin(turn));
+      if (out[1] < 0) out[1] *= -0.35; // (a shoot from under the branch turns out to the side and up: none hangs below it)
+      dir = mixed(way, 0.72, unit(out), 0.69);
+      dir[1] += 0.55;
+    } else if (Math.abs(way[1]) > 0.8) {
+      // (An upright shoot, the leader: its twigs all round it, rising.)
+      const turn = i * GOLDEN_TURN + chance(i, 3), out = mixed(side, Math.cos(turn), lift, Math.sin(turn));
+      dir = mixed(way, 0.5, out, 0.87);
+    } else {
+      // Left and right by turns, level; forward, more so toward the bough's tip; hanging a little.
+      const angle = ((62 - 18 * t + 10 * (chance(i, 3) - 0.5)) * Math.PI) / 180;
+      dir = mixed(way, Math.cos(angle), side, (i % 2 ? 1 : -1) * Math.sin(angle));
+      dir[1] += -0.08 + 0.55 * (chance(i, 4) - 0.5); // (hanging a little, some above the frond's plane, some below: a frond has depth)
+      // (And by its kind's habit: a branchlet hangs with its years, so most low in the crown and near the trunk; a sun shoot at the top stands a little.)
+      dir[1] += (bough.sun ?? 0) * 0.18 * high - (bough.sag ?? 0) * (0.25 + 0.75 * (1 - high)) * (1 - 0.6 * t) * Math.min(1, length / 0.9);
+    }
+    twigs.push({ base: at.p, dir: unit(dir), length, sway: [at.phase, at.reach, at.heading], way, side });
+  }
+  // (The branch's own end carries on as a twig.)
+  const last = points.at(-1), way = wayAt(whole), onward = [...way];
+  if (brushes) onward[1] += 0.35;
+  twigs.push({ base: last.p, dir: unit(onward), length: Math.max(0.25, bough.half * 0.3), sway: [last.phase, last.reach, last.heading], way, side });
+  return twigs;
+}
+
+function needlesGeometry(boughs) {
+  const out = { position: [], color: [], branch: [] };
+  for (const bough of boughs) {
+    const twigs = twigsOf(bough);
+    // (A pine's: each twig a plume, crowns of needles round its outer part.)
+    if (bough.style === 'brushes') twigs.forEach((twig, i) => { for (const crown of crownsOf(twig, bough, i)) crownInto(out, crown, twig.sway); });
+    // (The leader: twigs all round an upright shoot, each a blade, and the shoot's own needles.)
+    else if (bough.leader) { twigs.forEach((twig, i) => frondInto(out, twig, bough, i)); spineInto(out, bough); }
+    // (A frond: one sheet draped over its twigs.)
+    else drapeInto(out, bough, twigs);
+  }
+  return geometryOf(out);
+}
+
+// A fir's frond as one draped sheet: its twigs are the ribs, and the needles
+// are drawn as a single piece laid over them, thick over the branch and
+// thinning to nothing at its hem, where it hangs as far as the twigs do.
+// The hem is ragged: out to each twig's tip, and in again between one twig
+// and the next (now and then nearly to the branch: a gap, where the sky
+// shows from underneath). Its underside is flat and dark.
+//
+// The oak's leaves are joined the same way in spirit (./leafMass.js), in
+// their own shape: a broadleaf's clusters fill a volume, a fir's frond is a
+// sheet. A simplification, said plainly: a frond's needles drawn as one
+// surface, its body simplified and its edge kept where the twigs put it.
+const GAP = 0.15; // of the hem's notches, the share that run nearly to the branch
+const WIDE = 1.1; // m: a sheet wider than this, from the branch to its hem, has a row of corners between
+function drapeInto(out, bough, twigs) {
+  const end = twigs.at(-1), ribs = twigs.slice(0, -1);
+  if (ribs.length < 2) { twigs.forEach((twig, i) => frondInto(out, twig, bough, i)); return; }
+  const points = bough.points, lengths = lengthsOf(points);
+  const start = pointAt(points, lengths, lengths.at(-1) * bough.bare);
+  const sun = bough.sun ?? 0, high = bough.high ?? 0.5;
+  // (Sun needles at the top of the tree stand up off the twig and are short: a thicker, narrower frond.
+  // Shade needles low down are long and combed flat: a thinner, wider one.)
+  const thick = bough.needle * (0.55 + sun * (0.5 * high - 0.2));
+  const longer = 1 + sun * (0.2 - 0.45 * high);
+  const chance = (i, k) => cornerChance(i, k, bough.seed);
+  const tips = ribs.map((twig) => along(twig.base, twig.dir, twig.length * longer));
+  const endTip = along(end.base, end.dir, end.length);
+  const between = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  const shade = (light) => { const v = light * bough.shade; return [v, v, v]; };
+  const up = [0, 1, 0], down = [0, -1, 0];
+  const n = ribs.length;
+  for (const side of [0, 1]) {
+    // Along the branch: where its needles start, each twig's foot, its end. On this side of it, at each:
+    // the frond's hem (a twig of this side: its tip; a twig of the other: the notch between this side's
+    // tips either side of it), and how thick the needles lie over the branch there.
+    const row = [{ axis: start.p, hem: start.p, thick: 0, sway: [start.phase, start.reach, start.heading] }];
+    for (let i = 0; i < n; i++) {
+      let hem;
+      if (i % 2 === side) hem = tips[i];
+      else {
+        const before = i > 0 ? tips[i - 1] : start.p, after = i < n - 1 ? tips[i + 1] : endTip;
+        const deep = chance(i, 11) < GAP ? 0.88 : 0.2 + 0.4 * chance(i, 12);
+        hem = between(between(before, after, 0.5), ribs[i].base, deep);
+        hem[1] -= 0.08 * ribs[i].length * (1 - deep); // (the sheet sags a little between its ribs)
+      }
+      row.push({ axis: ribs[i].base, hem, thick: thick * Math.min(1, 0.45 + (i + 1) / 3), sway: ribs[i].sway });
+    }
+    row.push({ axis: end.base, hem: endTip, thick: thick * 0.5, sway: end.sway });
+    row.forEach((at, j) => {
+      const wide = dist(at.axis, at.hem), part = 0.42 + 0.2 * chance(j * 2 + side, 13);
+      at.mid = between(along(at.axis, up, at.thick), at.hem, part);
+      at.mid[1] += 0.1 * wide;
+    });
+    for (let j = 0; j + 1 < row.length; j++) {
+      const a = row[j], b = row[j + 1];
+      const corner = (v, light, sway) => ({ v, color: shade(light), sway });
+      const ridgeA = corner(along(a.axis, up, a.thick), 1, a.sway), ridgeB = corner(along(b.axis, up, b.thick), 1, b.sway);
+      const hemA = corner(a.hem, 0.8, a.sway), hemB = corner(b.hem, 0.8, b.sway);
+      if (Math.max(dist(a.axis, a.hem), dist(b.axis, b.hem)) > WIDE) {
+        // (A wide sheet has a row of corners between the branch and its hem, a little above the straight
+        // line between them: cloth over a branch is rounded, and falls away toward its edge.)
+        const midA = corner(a.mid, 0.92, a.sway), midB = corner(b.mid, 0.92, b.sway);
+        facing(out, ridgeA, midA, midB, up);
+        facing(out, ridgeA, midB, ridgeB, up);
+        facing(out, midA, hemA, hemB, up);
+        facing(out, midA, hemB, midB, up);
+      } else {
+        facing(out, ridgeA, hemA, hemB, up);
+        facing(out, ridgeA, hemB, ridgeB, up);
+      }
+      const underA = corner(a.axis, 0.5, a.sway), underB = corner(b.axis, 0.5, b.sway), darkA = corner(a.hem, 0.55, a.sway), darkB = corner(b.hem, 0.55, b.sway);
+      facing(out, underA, darkA, darkB, down);
+      facing(out, underA, darkB, underB, down);
+    }
+  }
+}
+
+// A fir's branch carries needles on its own shoot too. Where its twigs are
+// long their blades cover it; where they're short (toward its tip, where
+// its needles start, and all along a short branch near the tree's top) it's
+// drawn: blades end to end along the branch, joining its twigs into one
+// spray.
+const COVERED = 0.8; // m: twigs this long cover the branch they leave
+function spineInto(out, bough) {
+  const points = bough.points, lengths = lengthsOf(points), whole = lengths.at(-1);
+  const from = whole * bough.bare, leafy = whole - from;
+  const count = Math.max(1, Math.ceil(leafy / 0.7));
+  for (let i = 0; i < count; i++) {
+    if (bough.half * boughProfile((i + 0.5) / count) > COVERED) continue;
+    const a = pointAt(points, lengths, from + (leafy * i) / count), b = pointAt(points, lengths, from + (leafy * (i + 1)) / count);
+    const length = dist(a.p, b.p);
+    if (length < 1e-3) continue;
+    const dir = unit([b.p[0] - a.p[0], b.p[1] - a.p[1], b.p[2] - a.p[2]]);
+    bladeInto(out, a.p, dir, length * 1.2, Math.min(bough.needle, 0.7 * length) * 0.8, [a.phase, a.reach, a.heading], bough.shade);
+  }
+}
+
+// A blade of needles: level across, from `base` `length` m toward `dir`,
+// `width` m at its widest (a little short of halfway), with body: a ridge
+// along its top (a fir's needles stand up off the twig: `high` times its
+// width), flat underneath; lighter on top, dark underneath. Seen from the side it's a
+// wedge, not a line.
+function bladeInto(out, base, dir, length, width, sway, shade, high = 0.55) {
+  const across = acrossOf(dir), over = cross(across, dir);
+  const middle = along(base, dir, length * 0.45);
+  const corner = (v, light) => ({ v, color: [light * shade, light * shade, light * shade], sway });
+  const start = corner(base, 0.8), tip = corner(along(base, dir, length), 0.95), ridge = corner(along(middle, over, high * width), 1);
+  const left = corner(along(middle, across, -width / 2), 0.86), right = corner(along(middle, across, width / 2), 0.86);
+  facing(out, start, left, ridge, over);
+  facing(out, left, tip, ridge, over);
+  facing(out, tip, right, ridge, over);
+  facing(out, right, start, ridge, over);
+  const under = [-over[0], -over[1], -over[2]];
+  const dark = (c) => corner(c.v, 0.55);
+  facing(out, dark(start), dark(left), dark(tip), under);
+  facing(out, dark(start), dark(tip), dark(right), under);
+}
+
+// A fir's twig: a blade; a long one, a small frond: a narrow blade along
+// it, and blades of its own left and right, shorter toward its end.
+function frondInto(out, twig, bough, which) {
+  const shade = bough.shade * (0.92 + 0.16 * cornerChance(which, 7, bough.seed));
+  // (Sun needles at the top of the tree: shorter, standing up off the twig, so a narrower blade with a
+  // high ridge. Shade needles low down: longer, combed flat left and right, so a wider, flatter one.)
+  const sun = bough.sun ?? 0, high = bough.high ?? 0.5;
+  const ridge = 0.55 + sun * (0.5 * high - 0.2);
+  const widthOf = (length) => Math.min(bough.needle, 0.7 * length) * (1 + sun * (0.2 - 0.45 * high)); // (a short twig's blade is stubby)
+  const hangs = (bough.sag ?? 0) * (0.25 + 0.75 * (1 - high));
+  if (twig.length <= BLADE) {
+    bladeInto(out, twig.base, twig.dir, twig.length, widthOf(twig.length), twig.sway, shade, ridge);
+    return;
+  }
+  bladeInto(out, twig.base, twig.dir, twig.length, widthOf(twig.length) * 0.6, twig.sway, shade, ridge);
+  const across = acrossOf(twig.dir);
+  const count = Math.max(2, Math.round(twig.length * bough.twigs));
+  for (let i = 0; i < count; i++) {
+    const t = (i + 0.6) / (count + 0.4);
+    const angle = ((58 - 14 * t) * Math.PI) / 180;
+    const dir = mixed(twig.dir, Math.cos(angle), across, (i % 2 ? 1 : -1) * Math.sin(angle));
+    dir[1] -= 0.06 + hangs * 0.4 * t; // (a long twig's own blades hang too, those toward its end most)
+    const length = twig.length * 0.55 * (1 - 0.6 * t) * (0.85 + 0.3 * cornerChance(which * 31 + i, 8, bough.seed));
+    bladeInto(out, along(twig.base, twig.dir, twig.length * t * 0.9), unit(dir), length, widthOf(length), twig.sway, shade, ridge);
+  }
+}
+
+// A pine's shoot carries its needles along its outer part, all round it,
+// pointing forward: a plume, the twig bare behind it. Here a plume is
+// crowns of needles: rings round the shoot, the rear one opened wide, the
+// one near its end narrower, each ring one piece. Its needles are joined
+// from their feet to a little under halfway up by a web, so its edge runs
+// tip, notch, tip, notch (a zigzag), and seen from its end it's a star.
+// Nothing in it is round: the solid part is where the needles lie close,
+// near the shoot, as a real plume is dense there.
+//
+// The fir's frond has a toothed hem in the same spirit. A simplification,
+// said plainly: a needle here is a bundle of needles drawn as one, thicker
+// than life, and a crown's web stands for the needles too close to tell
+// apart.
+const CROWNS = [{ at: 0.45, open: 46, needles: 5 }, { at: 0.82, open: 24, needles: 4 }]; // each: where along the twig, how far its needles open from the shoot (degrees), how many
+const SMALL = { under: 0.45, at: 0.75, open: 36, needles: 5 }; // a twig shorter than this (m) carries one crown
+const WEB = 0.34;                                           // the web between two needles reaches this far up the shorter
+// A twig's crowns: [{ foot, back, front, tips, notches, shade }] (back and front: on the shoot, behind and ahead of
+// the foot: where the crown's outer and inner sides come to a point).
+export function crownsOf(twig, bough, which) {
+  const needle = Math.max(0.22, Math.min(bough.needle, 1.2 * twig.length)); // (little longer than the twig that carries it: a sapling's are short)
+  const side = acrossOf(twig.dir), lift = cross(side, twig.dir);
+  const rings = twig.length < SMALL.under ? [SMALL] : CROWNS;
+  return rings.map((ring, c) => {
+    const n = ring.needles, open = (ring.open * Math.PI) / 180;
+    const foot = along(twig.base, twig.dir, twig.length * ring.at);
+    const turn = which * GOLDEN_TURN + (c * Math.PI) / n + cornerChance(which, 30 + c, bough.seed) * 0.6;
+    const way = (round) => unit(mixed(twig.dir, Math.cos(open), mixed(side, Math.cos(round), lift, Math.sin(round)), Math.sin(open)));
+    const lengths = Array.from({ length: n }, (_, k) => needle * (0.85 + 0.3 * cornerChance(which * 13 + k, 40 + c, bough.seed)));
+    return {
+      foot,
+      back: along(foot, twig.dir, -0.08 * needle),
+      front: along(foot, twig.dir, 0.3 * needle * Math.cos(open)),
+      tips: lengths.map((length, k) => along(foot, way(turn + (k * 2 * Math.PI) / n), length)),
+      notches: lengths.map((length, k) => along(foot, way(turn + ((k + 0.5) * 2 * Math.PI) / n), WEB * Math.min(length, lengths[(k + 1) % n]))),
+      shade: bough.shade * (0.9 + 0.2 * cornerChance(which, 50 + c, bough.seed)),
+    };
+  });
+}
+// A crown: its outer side (from its point behind the foot out to its zigzag edge) and its inner side (from its
+// point ahead of the foot, darker: the inside of the funnel), four triangles a needle.
+function crownInto(out, crown, sway) {
+  const { back, front, tips, notches, shade } = crown, n = tips.length;
+  const corner = (v, light) => ({ v, color: [light * shade, light * shade, light * shade], sway });
+  const from = (apex, a, b) => [(apex[0] + a[0] + b[0]) / 3, (apex[1] + a[1] + b[1]) / 3, (apex[2] + a[2] + b[2]) / 3];
+  const away = (p, q) => [p[0] - q[0], p[1] - q[1], p[2] - q[2]];
+  for (let k = 0; k < n; k++) {
+    const tip = tips[k], before = notches[(k + n - 1) % n], after = notches[k];
+    for (const [a, b] of [[before, tip], [tip, after]]) {
+      const tipLight = (v) => (v === tip ? 1 : 0.8);
+      facing(out, corner(back, 0.62), corner(a, tipLight(a)), corner(b, tipLight(b)), away(from(back, a, b), front));
+      facing(out, corner(front, 0.5), corner(a, v6(a === tip)), corner(b, v6(b === tip)), away(from(front, a, b), back));
+    }
+  }
+}
+// (How light a corner of a crown's inner side is: its needle's tip, or the web's notch.)
+const v6 = (tip) => (tip ? 0.88 : 0.6);
+
+// A pine's twigs are bare below their plumes: thin sticks of wood, three-sided.
+function stickInto(out, twig, bark) {
+  const p = acrossOf(twig.dir), q = cross(p, twig.dir);
+  const end = along(twig.base, twig.dir, twig.length);
+  const ring = (c, r) => [0, 1, 2].map((j) => ({ v: along(along(c, p, Math.cos((j * 2 * Math.PI) / 3) * r), q, Math.sin((j * 2 * Math.PI) / 3) * r), color: bark(c[1]), sway: twig.sway }));
+  const a = ring(twig.base, Math.min(0.03, 0.012 + 0.012 * twig.length)), b = ring(end, 0.01);
+  for (let j = 0; j < 3; j++) {
+    const k = (j + 1) % 3;
+    const outward = [(a[j].v[0] + a[k].v[0]) / 2 - twig.base[0], (a[j].v[1] + a[k].v[1]) / 2 - twig.base[1], (a[j].v[2] + a[k].v[2]) / 2 - twig.base[2]];
+    facing(out, a[j], a[k], b[k], outward);
+    facing(out, a[j], b[k], b[j], outward);
+  }
+}
+
+// --- Leaves -------------------------------------------------------------------------------

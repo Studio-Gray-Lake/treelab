@@ -42,6 +42,7 @@
       }
       #info { position: fixed; top: 12px; left: 12px; max-width: min(calc(270px * var(--s)), 30vw, calc(100vw - 24px)); padding: calc(8px * var(--s)) calc(12px * var(--s)); }
       #info h1 { margin: 0; font-size: calc(15px * var(--s)); letter-spacing: 0.01em; }
+      #info h1 #version { margin-left: 0.3em; font-size: 0.62em; font-weight: 400; letter-spacing: 0; color: var(--ink-soft); white-space: nowrap; }
       #info .sub { margin: 2px 0 8px; color: var(--ink-soft); }
       #stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; }
       #stats dt { color: var(--ink-soft); }
@@ -199,7 +200,7 @@
     <div id="app"></div>
     <div id="info" class="card">
       <div id="info-top">
-        <h1>TreeLab</h1>
+        <h1>TreeLab <span id="version"></span></h1>
         <button class="fold" data-folds="info" aria-controls="info-body" aria-expanded="true" aria-label="Fold this card away"></button>
       </div>
       <div id="info-body">

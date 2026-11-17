@@ -109,6 +109,20 @@ test('a saved shape with settings the workshop has since dropped or reshaped sti
   assert.deepEqual(settings.shapes.broadleaf[key], TREE_SHAPES.broadleaf[key]);
 });
 
+test('a file from when the oak\'s leaves could be separate balls: separate is every cluster a mass of its own', () => {
+  const balls = normalize({ shapes: { oak: { masses: 0, merge: 100, noise: 30 } } });
+  assert.equal(balls.settings.shapes.oak.merge, 0);
+  assert.equal(balls.settings.shapes.oak.noise, 30);
+  assert.ok(!('masses' in balls.settings.shapes.oak) && balls.notes.some((note) => /mass of its own/.test(note)), balls.notes.join('; '));
+  // (One that had them merged keeps its merging; merged and nothing said of how many, all of them, as its build
+  // had it; one that says nothing of either gets today's.)
+  const masses = normalize({ shapes: { oak: { masses: 1, merge: 40 } } });
+  assert.deepEqual([masses.settings.shapes.oak.merge, masses.notes.length], [40, 0]);
+  assert.equal(normalize({ shapes: { oak: { masses: 1, noise: 114 } } }).settings.shapes.oak.merge, 100);
+  assert.equal(normalize({ shapes: { oak: { gnarl: 0.5 } } }).settings.shapes.oak.merge, 70);
+  assert.equal(defaultSettings().shapes.oak.leafReach, 0.2);
+});
+
 test('every kind\'s mix is in the settings, the oak off to start', () => {
   const { mix } = defaultSettings().forest;
   assert.deepEqual(Object.keys(mix).sort(), [...KINDS].sort());

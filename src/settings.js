@@ -1,4 +1,4 @@
-import { DEFAULT_SHAPES, KINDS } from './kinds.js';
+import { DEFAULT_SHAPES, KINDS, isOwn } from './kinds.js';
 import { DEFAULT_WIND } from '@workshop/wind.js';
 import { hasAges } from './age.js';
 import { limitsFor, sliderKind } from './limits.js';
@@ -21,8 +21,11 @@ export const SETTINGS_VERSION = 1;
 export const MAX_TREES = 4000;
 
 // The workshop's mix (src/trees.js TREE_MIX), in percent.
-// TreeLab's oak (real size, 20 m wide) is in the mix but off to start.
+// TreeLab's own kind (real size: an oak is 20 m wide)
+// is in the mix but off to start.
 const MIX = { fir: 45, pine: 20, broadleaf: 35, oak: 30 };
+// The ages a kind with ages has in a forest of several, to start with (years).
+const MIX_AGES = { oak: [30, 300] };
 
 export function defaultSettings() {
   return {
@@ -45,7 +48,7 @@ export function defaultSettings() {
       patchSize: 20,
       cover: 0.6,
       // (A kind with ages, the oak: mixed: its trees of several ages, from ages[0] to ages[1] years; old: 0 mostly young, 1 mostly old. src/age.js.)
-      mix: Object.fromEntries(KINDS.map((kind) => [kind, { on: kind !== 'oak', share: MIX[kind] ?? 30, ...(hasAges(kind) ? { mixed: false, ages: [30, 300], old: 0.5 } : {}) }])),
+      mix: Object.fromEntries(KINDS.map((kind) => [kind, { on: !isOwn(kind), share: MIX[kind] ?? 30, ...(hasAges(kind) ? { mixed: false, ages: [...(MIX_AGES[kind] ?? [30, 300])], old: 0.5 } : {}) }])),
       grouping: 'mixed',
       standSize: 25,
       variants: 6,
@@ -160,8 +163,28 @@ export function normalize(raw) {
     return { settings, notes };
   }
   if (Number(raw.version) > SETTINGS_VERSION) notes.push('saved by a newer TreeLab: settings it added are left out');
-  merge(settings, raw, '', notes);
+  merge(settings, older(raw, notes), '', notes);
   return { settings, notes };
+}
+
+// Settings saved by an older TreeLab, put the way they're kept now (a copy:
+// what was given is left as it is).
+// - The oak's leaves were separate balls unless "merged masses" was on
+//   (its "masses": 0 or 1, gone since). They are always masses now, and a
+//   file that had them separate has every cluster a mass of its own:
+//   merging 0.
+function older(raw, notes) {
+  const oak = raw.shapes?.oak;
+  if (!isObject(oak) || !('masses' in oak)) return raw;
+  const { masses, ...rest } = oak;
+  if (!(Number(masses) >= 0.5)) {
+    rest.merge = 0;
+    notes.push('shapes.oak: its leaves were separate clusters; each is now a mass of its own (merging 0)');
+  } else if (!('merge' in rest)) {
+    // (Merged, and nothing said of how many: all of them, as that build had it. A link holds only what was changed.)
+    rest.merge = 100;
+  }
+  return { ...raw, shapes: { ...raw.shapes, oak: rest } };
 }
 
 function merge(target, source, path, notes) {

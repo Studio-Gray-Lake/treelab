@@ -22,7 +22,9 @@ function sound(tree, label, shape = OAK_SHAPE) {
   // oak's thick wood is round: more sides.)
   const n = triangles(tree.wood) + triangles(tree.foliage);
   // (And a trunk thicker than any oak's has thick wood all the way out.)
-  const most = 22000 * tree.layout.oak.big ** 2 * Math.max(1, shape.girth[1] / 1.5);
+  // (26,000, where it was 22,000 when the leaves were balls: as masses a big oak's are a few thousand more.)
+  // (And clusters far taller than they're wide are more surface to draw.)
+  const most = 26000 * tree.layout.oak.big ** 2 * Math.max(1, shape.girth[1] / 1.5) * Math.max(1, shape.squash / 1.8) * Math.max(1, (0.9 / shape.coarse) ** 2); // (and finer facets are more of them: nine times as many at a third the size)
   assert.ok(n > 200 && n < most, `${label}: ${n} triangles (at most ${Math.round(most)})`);
   const [lo, hi] = shape.height;
   assert.ok(tree.height > lo * 0.7 && tree.height < hi * 1.3 + 1, `${label}: ${tree.height.toFixed(1)} m tall for ${lo}–${hi}`);
@@ -30,14 +32,18 @@ function sound(tree, label, shape = OAK_SHAPE) {
 }
 
 test('an oak grows at its real size, wider than tall, in good time', () => {
+  const took = [];
   for (const seed of SEEDS) {
     const start = performance.now();
     const tree = buildOak(seed, OAK_SHAPE);
-    const ms = performance.now() - start;
+    took.push(performance.now() - start);
     sound(tree, `seed ${seed}`);
     assert.ok(tree.reach * 2 > tree.height * 0.9, `seed ${seed}: ${(tree.reach * 2).toFixed(1)} m wide, ${tree.height.toFixed(1)} m tall`);
-    assert.ok(ms < 600, `seed ${seed}: ${ms.toFixed(0)} ms`);
   }
+  // (Each takes 50 to 120 ms alone. The tests run side by side, and one may be held up, so: most of them well
+  // within the time, and none absurdly long.)
+  const sorted = [...took].sort((a, b) => a - b);
+  assert.ok(sorted[Math.floor(sorted.length / 2)] < 400 && sorted.at(-1) < 2500, `an oak took ${took.map((ms) => ms.toFixed(0)).join(', ')} ms`);
 });
 
 test('the same seed grows the same oak; another seed another', () => {

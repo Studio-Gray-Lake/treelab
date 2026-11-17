@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AGES, ageKeys, agesOf, applyAge, atAge, hasAges, reAged } from '../src/age.js';
-import { KINDS } from '../src/kinds.js';
+import { KINDS, isOwn } from '../src/kinds.js';
 import { limitsFor } from '../src/limits.js';
 import { OAK_LIMITS, OAK_SHAPE, OUTLINE, buildOak } from '../src/oak/oak.js';
 import { presetOf, presetShape } from '../src/presets.js';
@@ -18,7 +18,7 @@ test('the oak has an age, first in its panel; the workshop\'s trees have none', 
   assert.deepEqual(OAK_LIMITS.age, [10, 800, 1]);
   assert.equal(Object.keys(ROWS.oak.size)[0], 'age');
   assert.ok(hasAges('oak'));
-  for (const kind of KINDS.filter((k) => k !== 'oak')) assert.ok(!hasAges(kind) && ageKeys(kind).length === 0, kind);
+  for (const kind of KINDS.filter((k) => !isOwn(k))) assert.ok(!hasAges(kind) && ageKeys(kind).length === 0, kind);
   assert.deepEqual(AGES.oak.map((stage) => stage.preset), ['young', 'open-grown', 'ancient']);
   for (const { age, preset } of AGES.oak) assert.equal(presetShape('oak', preset).age, age, `"${preset}" isn't at its stage's age`);
 });
@@ -26,7 +26,7 @@ test('the oak has an age, first in its panel; the workshop\'s trees have none', 
 test('the age moves what its stages differ in, and nothing else', () => {
   const keys = ageKeys('oak');
   for (const key of ['height', 'spread', 'trunk', 'girth', 'limbs', 'gnarl', 'burrs', 'hollows', 'flare', 'roots', 'clumpSize', ...OUTLINE]) assert.ok(keys.includes(key), `the age doesn't move ${key}`);
-  for (const key of ['age', 'crowded', 'bends', 'marksHigh', 'sway', 'masses', 'merge', 'noise', 'noiseType', 'squash', 'rough']) assert.ok(!keys.includes(key), `the age moves ${key}`);
+  for (const key of ['age', 'crowded', 'bends', 'marksHigh', 'sway', 'merge', 'leafReach', 'noise', 'noiseType', 'squash', 'rough']) assert.ok(!keys.includes(key), `the age moves ${key}`);
   const shape = { ...structuredClone(OAK_SHAPE), crowded: 0.7, bends: 1.2, noise: 80, sway: 0.1 };
   const height = shape.height;
   applyAge('oak', shape, 60);
@@ -103,7 +103,7 @@ test('a forest\'s oaks are all of one age until asked otherwise', async () => {
   const { defaultSettings, normalize, rangeOf } = await import('../src/settings.js');
   const mix = defaultSettings().forest.mix;
   assert.deepEqual([mix.oak.mixed, mix.oak.ages, mix.oak.old], [false, [30, 300], 0.5]);
-  for (const kind of KINDS.filter((k) => k !== 'oak')) assert.ok(!('mixed' in mix[kind]) && !('ages' in mix[kind]), kind);
+  for (const kind of KINDS.filter((k) => !isOwn(k))) assert.ok(!('mixed' in mix[kind]) && !('ages' in mix[kind]), kind);
   assert.deepEqual(rangeOf('forest.mix.oak.ages'), [10, 800, 1]);
   assert.deepEqual(rangeOf('forest.mix.oak.old'), [0, 1, 0.01]);
   // (A file's ages are kept, in order and inside the slider; an older file has none and gets the usual.)

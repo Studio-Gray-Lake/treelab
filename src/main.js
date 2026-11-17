@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import rigUrl from '../vendor/workshop/rig.glb?url';
 import GUI from 'three/addons/libs/lil-gui.module.min.js';
-import { DEFAULT_SHAPES, KINDS, KIND_CHOICES } from './kinds.js';
+import { DEFAULT_SHAPES, KINDS, KIND_CHOICES, kindName } from './kinds.js';
 import { createPlanter, recolor, treetops } from './tree.js';
 import { DRAWINGS, ROWS, sectionsOf } from './sections.js';
 import { foliageColor, groundColor, mottleOf } from './colors.js';
@@ -40,6 +40,7 @@ import { OUTLINE, outlineOf } from './oak/oak.js';
 import { attachTooltips } from './tooltip.js';
 import { shapeTip, tip } from './tips.js';
 import { ABOUT, showsWelcome, turnWelcomeOff } from './welcome.js';
+import { versionLabel, versionSays } from './version.js';
 
 // TreeLab: the Tree tab grows one tree, or a grid of them to compare; the
 // Forest tab plants them on hills. Both use the workshop's trees, wind and
@@ -717,6 +718,15 @@ const shareLink = () => `${location.origin}${location.pathname}${location.search
 
 const statsEl = document.getElementById('stats');
 const noteEl = document.getElementById('note');
+// Which TreeLab this is, beside its name (./version.js). On the dev server the code changes under a running
+// server, so the page asks again each time it loads.
+const versionEl = document.getElementById('version');
+const showVersion = (build) => {
+  versionEl.textContent = versionLabel(build);
+  versionEl.title = versionSays(build);
+};
+showVersion(__TREELAB__);
+if (__TREELAB__.dev) fetch('/__treelab-build').then((answer) => answer.json()).then(showVersion).catch(() => {});
 if (import.meta.env.DEV) {
   const w = __WORKSHOP__;
   document.getElementById('source').textContent = w.live ? `Reading the workshop's own files: ${w.dir}` : `Workshop files synced ${w.synced}`;
@@ -836,8 +846,8 @@ const growForest = safely(function growForest({ frame = false } = {}) {
     ['trees', count(records.length)],
     ['per hectare', count(records.length / hectares)],
     ['canopy cover', `${Math.round(100 * canopyCover(woods, { shape: settings.forest.area, radius: settings.forest.radius }).cover)}%`],
-    ...kinds.map(([k, n]) => [k, `${count(n)} (${Math.round((100 * n) / Math.max(1, records.length))}%)`]),
-    ...kinds.filter(([k]) => aged.has(k)).map(([k]) => [`${k} ages`, `${aged.get(k).ages.join(', ')} years`]),
+    ...kinds.map(([k, n]) => [kindName(k), `${count(n)} (${Math.round((100 * n) / Math.max(1, records.length))}%)`]),
+    ...kinds.filter(([k]) => aged.has(k)).map(([k]) => [`${kindName(k)} ages`, `${aged.get(k).ages.join(', ')} years`]),
     ...(report.clearings ? [['in clearings', `${count(report.clearings)} left out`]] : []),
     ...(report.steep ? [['too steep', `${count(report.steep)} left out`]] : []),
     ...(report.thinnedTo ? [['thinned', `to ${count(report.thinnedTo)} a hectare (at most ${count(MAX_TREES)} trees)`]] : []),
@@ -1135,6 +1145,9 @@ const tint = (folder, name) => {
   return folder;
 };
 
+// The kinds as the panel names them, each for its key.
+const KIND_OPTIONS = Object.fromEntries(KINDS.map((kind) => [kindName(kind), kind]));
+
 const gui = new GUI({ container: document.getElementById('gui'), title: 'settings' });
 const refreshPanel = () => gui.controllersRecursive().forEach((c) => c.updateDisplay());
 const folders = { tree: [], forest: [] };
@@ -1185,7 +1198,7 @@ function addRange(folder, object, key, name, [lo, hi, step], what) {
 // Tree tab: the tree.
 const treeFolder = gui.addFolder('tree');
 folders.tree.push(treeFolder);
-watch(treeFolder.add(settings.tree, 'kind', CHOICES['tree.kind']), 'both', { frame: true, also: () => fillShapeFolder() });
+watch(treeFolder.add(settings.tree, 'kind', KIND_OPTIONS), 'both', { frame: true, also: () => fillShapeFolder() });
 watch(treeFolder.add(settings.tree, 'seed', ...range('tree.seed')), 'both');
 watch(treeFolder.add(settings.tree, 'variant', ...range('tree.variant')), 'tree');
 treeFolder.add({
@@ -1288,15 +1301,15 @@ const ageRows = []; // (each kind's age rows, shown or not: called again when se
 const mixFolder = gui.addFolder('mix');
 folders.forest.push(mixFolder);
 for (const kind of KINDS) {
-  watch(mixFolder.add(settings.forest.mix[kind], 'on').name(kind), 'forest');
-  watch(mixFolder.add(settings.forest.mix[kind], 'share', ...RANGES['forest.mix.share']).name(`${kind} share (%)`), 'forest');
+  watch(mixFolder.add(settings.forest.mix[kind], 'on').name(kindName(kind)), 'forest');
+  watch(mixFolder.add(settings.forest.mix[kind], 'share', ...RANGES['forest.mix.share']).name(`${kindName(kind)} share (%)`), 'forest');
   // (A kind with ages: its trees all of the Tree tab's age, or of several.)
   if (hasAges(kind)) {
     const mix = settings.forest.mix[kind];
     const rows = [];
     const show = () => rows.forEach((row) => row.show(mix.mixed));
     watch(mixFolder.add(mix, 'mixed').name(`${kind} of several ages`), 'forest', { also: show });
-    rows.push(addRange(mixFolder, mix, 'ages', `${kind} ages (years)`, RANGES['forest.mix.ages'], 'forest'));
+    rows.push(addRange(mixFolder, mix, 'ages', `${kindName(kind)} ages (years)`, RANGES['forest.mix.ages'], 'forest'));
     rows.push(watch(mixFolder.add(mix, 'old', ...RANGES['forest.mix.old']).name(`${kind}: young to old`), 'forest'));
     ageRows.push(show);
     show();
@@ -1327,7 +1340,7 @@ watch(groundFolder.add(settings.forest, 'maxSlope', ...range('forest.maxSlope'))
 // range is one row with two handles, least and most. (In the Forest tab,
 // the kind to change is chosen at its top.)
 const shapeFolder = gui.addFolder('shape').close();
-const shapeKind = shapeFolder.add(settings.tree, 'kind', CHOICES['tree.kind']).name('kind to change');
+const shapeKind = shapeFolder.add(settings.tree, 'kind', KIND_OPTIONS).name('kind to change');
 shapeKind.onChange(() => {
   fillShapeFolder();
   refreshPanel();
@@ -1350,7 +1363,7 @@ function fillShapeFolder() {
   }
   for (const child of [...shapeFolder.children]) if (child !== shapeKind) child.destroy();
   outlineRow = null;
-  shapeFolder.title(`${kind} shape`);
+  shapeFolder.title(`${kindName(kind)} shape`);
   const shape = settings.shapes[kind];
   // Start from a ready-made shape (src/presets.js); "custom" once a slider moves.
   pick.startFrom = presetOf(kind, shape);
@@ -1463,8 +1476,8 @@ recolored(colourFolder.add(settings.autumn, 'spread', ...range('autumn.spread'))
 recolored(colourFolder.add(settings.autumn, 'evergreens').name('needles turn too'));
 const greensFolder = colourFolder.addFolder('greens').close();
 for (const kind of KINDS) {
-  recolored(greensFolder.addColor(settings.colors[kind], 'dark').name(`${kind}: dark`));
-  recolored(greensFolder.addColor(settings.colors[kind], 'light').name(`${kind}: light`));
+  recolored(greensFolder.addColor(settings.colors[kind], 'dark').name(`${kindName(kind)}: dark`));
+  recolored(greensFolder.addColor(settings.colors[kind], 'light').name(`${kindName(kind)}: light`));
 }
 
 // Both tabs: the sway, and the wind (its rows are the workshop's own, put
@@ -1545,8 +1558,8 @@ function tipOf(row) {
   if (c.object === pick) return tip('preset.startFrom');
   if (c.object === scenePick) return tip('scene.startFrom');
   const owner = owners.get(c.object);
-  if (owner?.startsWith('mix:')) return tip(`mix.${c.property}`, owner.slice(4));
-  if (owner?.startsWith('colors:')) return tip(`colors.${c.property}`, owner.slice(7));
+  if (owner?.startsWith('mix:')) return tip(`mix.${c.property}`, kindName(owner.slice(4)));
+  if (owner?.startsWith('colors:')) return tip(`colors.${c.property}`, kindName(owner.slice(7)));
   return tip(owner ? `${owner}.${c.property}` : `action.${c.property}`, settings.tree.kind);
 }
 attachTooltips(document.getElementById('panel'), tipOf);

@@ -8,7 +8,7 @@ import { NOISE_TYPES, USUAL_PATTERN } from '../src/oak/leafNoise.js';
 // merged into one surface, hollow underneath. A test, behind the "merged
 // masses" setting.
 
-const merged = { ...OAK_SHAPE, masses: 1 };
+const merged = { ...OAK_SHAPE, merge: 100 };
 const limb = { phase: 1, heading: 2, reach1: 0.02 };
 const clump = (center, radius, extra = {}) => ({ center, radius, squash: 0.9, seed: 7, shade: 1, limb, ...extra });
 const triangles = (g) => g.attributes.position.count / 3;
@@ -113,7 +113,9 @@ test('an oak with merged masses: far fewer pieces than clusters, the same wood, 
     assert.ok(Math.abs(tree.height - usual.height) < 2.5 && Math.abs(tree.reach - usual.reach) < 2.5, `seed ${seed}: the crown changed size`);
     assert.ok(ms < 700, `seed ${seed}: ${ms.toFixed(0)} ms`);
   }
-  assert.equal(layoutOak(11, OAK_SHAPE).leaves.merged, false, 'the usual oak has merged masses');
+  // (The usual oak: seven in ten of the clusters that could join do, and its leaves reach as far as they always did.)
+  assert.deepEqual([layoutOak(11, OAK_SHAPE).leaves.merge, layoutOak(11, OAK_SHAPE).leaves.level], [0.7, 0.2]);
+  assert.ok(!('masses' in OAK_SHAPE), 'the switch between balls and masses is back');
 });
 
 // Every edge of a closed surface that faces one way throughout is walked
@@ -233,6 +235,22 @@ const triangleSet = (g) => {
   return out.sort();
 };
 
+test('leaves that reach further: clusters further apart run together, and each is a little fuller', async () => {
+  const { groupsOf, USUAL_LEVEL } = await import('../src/oak/leafMass.js');
+  assert.equal(USUAL_LEVEL, 0.2);
+  // Two clusters with a gap between them of four tenths of their radius.
+  const pair = [clump([0, 10, 0], 1.5, { seed: 3 }), clump([3.6, 10, 0], 1.5, { seed: 4 })];
+  assert.equal(pieces(massGeometry(pair, { cell: 0.3, rough: 0, level: 0.1 })), 2, 'with little reach they stay apart');
+  assert.equal(pieces(massGeometry(pair, { cell: 0.3, rough: 0, level: 0.6 })), 1, 'with much they run together');
+  assert.deepEqual(triangleSet(massGeometry(pair, { cell: 0.3, rough: 0 })), triangleSet(massGeometry(pair, { cell: 0.3, rough: 0, level: 0.2 })), 'the usual reach is 0.2');
+  // (Alone, a cluster is its own size at the usual reach. With more it's fuller: a cluster is several lumps, and their fields add up further out. At most a third wider.)
+  const wide = (level) => { const p = massGeometry([pair[0]], { cell: 0.2, rough: 0, level }).attributes.position; let most = 0; for (let i = 0; i < p.count; i++) most = Math.max(most, Math.hypot(p.getX(i), p.getZ(i))); return most; };
+  assert.ok(Math.abs(wide(0.2) - 1.5) < 0.3 && wide(0.1) <= wide(0.2) + 1e-9 && wide(0.6) > wide(0.2) && wide(0.6) < 1.5 * 1.35, `a cluster 1.5 m in radius is ${wide(0.1).toFixed(2)}, ${wide(0.2).toFixed(2)} and ${wide(0.6).toFixed(2)} m with reach 0.1, 0.2 and 0.6`);
+  // (And an oak with more reach has fewer, bigger masses.)
+  const few = buildOak(11, { ...OAK_SHAPE, merge: 100, leafReach: 0.6 }), many = buildOak(11, { ...OAK_SHAPE, merge: 100, leafReach: 0.05 });
+  assert.ok(pieces(few.foliage) < pieces(many.foliage), `${pieces(few.foliage)} masses with much reach, ${pieces(many.foliage)} with little`);
+});
+
 test('merging: all of them is the masses as they were, none is a mass for every cluster', async () => {
   const { groupsOf } = await import('../src/oak/leafMass.js');
   const { clumps } = layoutOak(11, merged);
@@ -294,10 +312,11 @@ test('an oak with half its clusters merged: sound, the same wood, more masses th
 test('the usual noise is what it was before its pattern could be chosen', () => {
   // (Recorded from the masses as they were: [seed, noise, coarseness, triangles of leaves, the sums of their corners' x, y and z].)
   const was = [
-    [11, 100, 0.9, 6924, 800.70, 240405.46, 13692.84],
-    [22, 164, 0.9, 7344, -5567.09, 241623.74, -2038.85],
-    [11, 100, 0.5, 24360, 9978.62, 840368.61, 36524.58],
-    [33, 50, 0.9, 6560, -1807.55, 208969.12, -18356.87],
+    // (Recorded again on 12 Nov 2026, when sharp corners in thick wood were eased: the branches moved a little, the noise did not change.)
+    [11, 100, 0.9, 6876, 823.08, 239206.10, 14317.39],
+    [22, 164, 0.9, 7348, -5403.71, 242417.04, -3695.47],
+    [11, 100, 0.5, 23956, 8287.98, 828729.37, 41145.19],
+    [33, 50, 0.9, 6440, 83.06, 206709.69, -17026.68],
   ];
   for (const [seed, noise, coarse, count, ...sums] of was) {
     // (On a straight trunk, as every oak had when these were recorded.)

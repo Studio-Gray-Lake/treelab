@@ -3,7 +3,7 @@ import { PRESETS, presetShape } from './presets.js';
 
 // A tree's age, as a slider that moves the others.
 //
-// A kind that has it (the oak) has a ready-made shape for each stage of its
+// A kind that has it (TreeLab's own: the oak) has a ready-made shape for each stage of its
 // life in the open (src/presets.js): young, grown, ancient, each at an age.
 // The age slider sets every setting those shapes differ in to what it is at
 // that age, between the stage before and the stage after: its height, its

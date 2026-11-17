@@ -28,8 +28,8 @@ export const ROWS = {
     size: { age: 'age (years)', height: 'height', spread: 'crown width', lean: 'lean' },
     trunk: { trunk: 'bare trunk', girth: 'thickness', bends: 'bends', gnarl: 'gnarl', burrs: 'burrs', hollows: 'hollows', marksHigh: 'marks reach up' },
     roots: { flare: 'flare', roots: 'surface roots' },
-    limbs: { limbs: 'big limbs', crooked: 'crooked', droop: 'sag', stubs: 'dead stubs' },
-    crown: { leafiness: 'fullness', crowded: 'neighbours', reachTop: 'at the top', reachHigh: 'three quarters up', reachMid: 'halfway up', reachLow: 'a quarter up', reachBottom: 'at the bottom', clumpSize: 'cluster size', squash: 'flat to tall', rough: 'lumpy', masses: 'merged masses (test)', merge: 'merging (%)', coarse: 'coarseness', noise: 'amount (%)', noiseType: 'type', noiseSize: 'size (m)', noiseDetail: 'detail', noiseBend: 'bend (m)', noiseBillow: 'billow' },
+    limbs: { limbs: 'big limbs', leader: 'trunk carries on', whorl: 'limbs to a ring', riseTop: 'rise at the top (°)', riseBottom: 'rise at the bottom (°)', crooked: 'crooked', droop: 'sag', stubs: 'dead stubs' },
+    crown: { leafiness: 'fullness', crowded: 'neighbours', reachTop: 'at the top', reachHigh: 'three quarters up', reachMid: 'halfway up', reachLow: 'a quarter up', reachBottom: 'at the bottom', clumpSize: 'cluster size', squash: 'flat to tall', rough: 'lumpy', merge: 'merging (%)', leafReach: 'leaves reach', coarse: 'coarseness', noise: 'amount (%)', noiseType: 'type', noiseSize: 'size (m)', noiseDetail: 'detail', noiseBend: 'bend (m)', noiseBillow: 'billow' },
     movement: { sway: 'sway' },
   },
   // The workshop's three (vendor/workshop/treeShapes.js).
@@ -58,9 +58,10 @@ export const ROWS = {
 // The rows that share a folded panel of their own within their section:
 // { kind: { the panel's title: [settings] } }. (They're listed together in
 // their section, above.)
+const OUTLINE_ROWS = ['reachTop', 'reachHigh', 'reachMid', 'reachLow', 'reachBottom'];
 export const PANELS = {
   oak: {
-    outline: ['reachTop', 'reachHigh', 'reachMid', 'reachLow', 'reachBottom'],
+    outline: OUTLINE_ROWS,
     noise: ['noise', 'noiseType', 'noiseSize', 'noiseDetail', 'noiseBend', 'noiseBillow'],
   },
 };

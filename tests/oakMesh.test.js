@@ -51,11 +51,16 @@ test('a branch is thicker where it leaves its parent, never as thick as it, and 
     let collars = 0;
     for (const run of wood.runs) {
       const points = shaped(run, wood);
-      for (let i = 1; i < points.length; i++) assert.ok(points[i].r <= points[i - 1].r + 1e-9, `seed ${seed}: wood thickens outward`);
-      if (!run.side || run.stalk || run.points[0].r < 0.1 || points.length < 4) continue;
+      // (A branch with a collar starts with a narrower ring at its parent's middle, inside its wood: from its collar on.)
+      const collared = run.side && !run.stalk && run.points[0].r >= 0.1 && points.length >= 5;
+      for (let i = collared ? 2 : 1; i < points.length; i++) assert.ok(points[i].r <= points[i - 1].r + 1e-9, `seed ${seed}: wood thickens outward`);
+      if (!collared) continue;
       collars++;
-      assert.ok(points[0].r < run.parent, `seed ${seed}: a branch of ${points[0].r.toFixed(2)} m leaves wood of ${run.parent.toFixed(2)} m`);
-      assert.ok(points[0].r > run.points[0].r * 1.15, `seed ${seed}: no collar (${points[0].r.toFixed(3)} m where the branch is ${run.points[0].r.toFixed(3)} m)`);
+      assert.ok(points[1].r < run.parent, `seed ${seed}: a branch of ${points[1].r.toFixed(2)} m leaves wood of ${run.parent.toFixed(2)} m`);
+      assert.ok(points[1].r > run.points[0].r * 1.15, `seed ${seed}: no collar (${points[1].r.toFixed(3)} m where the branch is ${run.points[0].r.toFixed(3)} m)`);
+      // (Its first ring: at its parent's middle, and well inside its parent's wood, so its open end is never seen.)
+      assert.ok(Math.hypot(...points[0].p.map((v, k) => v - run.points[0].p[k])) < 1e-9, `seed ${seed}: a branch starts away from its parent's middle`);
+      assert.ok(points[0].r <= run.parent * 0.6 + 1e-9, `seed ${seed}: a branch's first ring is ${points[0].r.toFixed(2)} m in wood of ${run.parent.toFixed(2)} m`);
     }
     assert.ok(collars > 3, `seed ${seed}: only ${collars} branches with a collar`);
   }
@@ -283,4 +288,56 @@ test('thick wood\'s mesh is uneven: its four-sided patches aren\'t all cut the s
     }
     assert.ok(oneWay > 20 && other > 20, `seed ${seed}: ${oneWay} patches cut one way, ${other} the other`);
   }
+});
+
+test('thick wood has no sharp corners: no branch turns more than 60 degrees from one step to the next', () => {
+  const turnAt = (a, b, c) => {
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - b[0], c[1] - b[1], c[2] - b[2]];
+    const cos = (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / ((Math.hypot(...u) * Math.hypot(...v)) || 1);
+    return (Math.acos(Math.min(1, Math.max(-1, cos))) * 180) / Math.PI;
+  };
+  for (const seed of [...SEEDS, 7, 44, 55]) {
+    for (const change of [{}, { crooked: 1.2 }, { bends: 1 }, { reachLow: 0.3, reachMid: 0.6, reachHigh: 1, reachTop: 0.3 }]) {
+      const { wood } = layoutOak(seed, { ...OAK_SHAPE, ...change });
+      let sharpest = 0, thick = 0;
+      for (const run of wood.runs) {
+        if (run.stalk) continue;
+        for (let i = 1; i < run.points.length - 1; i++) {
+          if (run.points[i].r <= 0.045) continue;
+          thick++;
+          sharpest = Math.max(sharpest, turnAt(run.points[i - 1].p, run.points[i].p, run.points[i + 1].p));
+        }
+      }
+      assert.ok(thick > 20, `seed ${seed}: only ${thick} steps of thick wood`);
+      assert.ok(sharpest < 60, `seed ${seed}, ${JSON.stringify(change)}: thick wood turns ${sharpest.toFixed(0)} degrees at one step`);
+    }
+  }
+});
+
+test('a branch is never too thin for its length, and still thinner than the wood it grows from', () => {
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  // A tall oak on a thin trunk: where thickness from the tips alone left limbs 15 m long 10 cm across.
+  const thin = { ...OAK_SHAPE, height: [30, 30], spread: [1.05, 1.05], trunk: [7, 7], girth: [0.45, 0.45], bends: 0 };
+  for (const seed of SEEDS) {
+    const { wood } = layoutOak(seed, thin);
+    let longest = 0, slenderest = 0;
+    for (const run of wood.runs) {
+      if (run.stalk) continue;
+      const p = run.points;
+      // (From each point of the run, how far its own run carries on, and how thick it is there.)
+      let left = 0;
+      for (let i = p.length - 1; i > 0; i--) {
+        left += dist(p[i].p, p[i - 1].p);
+        if (i - 1 === 0 && run.side) break; // (a side run's first point is its parent's)
+        slenderest = Math.max(slenderest, left / p[i - 1].r);
+        if (p[i - 1].r < 0.05) longest = Math.max(longest, left);
+      }
+      for (let i = 2; i < p.length; i++) assert.ok(p[i].r <= p[i - 1].r + 1e-9, `seed ${seed}: wood thickens outward`);
+    }
+    assert.ok(slenderest < 100, `seed ${seed}: a branch runs on ${slenderest.toFixed(0)} times its radius`);
+    assert.ok(longest < 6.5, `seed ${seed}: wood under 5 cm radius runs on for ${longest.toFixed(1)} m`);
+    for (const join of wood.joins ?? layoutOak(seed, thin).oak.joins) assert.ok(join.r0 <= join.parent + 1e-9, `seed ${seed}: a branch of ${join.r0.toFixed(2)} m leaves wood of ${join.parent.toFixed(2)} m`);
+  }
+  // (The trunk is as thick as asked, whatever its branches need.)
+  assert.ok(Math.abs(layoutOak(11, thin).oak.girth - 0.45) < 1e-9);
 });

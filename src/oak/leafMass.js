@@ -3,8 +3,9 @@ import { mulberry32 } from '@workshop/treeShapes.js';
 import { pushesOf } from './chance.js';
 import { NOISE, USUAL_PATTERN, bendOf, layersOf, patternFrom } from './leafNoise.js';
 
-// The oak's leaves as masses: the clusters on one big limb merged into a
-// single billowing surface, hollow underneath.
+// The oak's leaves as masses: the clusters on one big limb merged into
+// billowing surfaces, hollow underneath. This is how the oak's leaves are
+// drawn (the balls it began with are gone).
 //
 // A cluster of leaves used to be drawn as a ball of its own, and a crown as
 // a pile of balls: a crease wherever two crossed, each lit as a ball, and
@@ -57,8 +58,17 @@ import { NOISE, USUAL_PATTERN, bendOf, layersOf, patternFrom } from './leafNoise
 // What isn't as in life: a mass is a skin round where the leaves are, not
 // leaves.
 
-const LEVEL = 0.2;                                    // the field's value at the surface
-const REACH = 1 / Math.sqrt(1 - Math.cbrt(LEVEL));    // a lump's field reaches this many times its radius (so a lump on its own is as big as itself)
+// How far a cluster's leaves reach toward its neighbours ("leaves reach",
+// 0.05 to 0.6): the field's value at the surface. Whatever it is, a lump on
+// its own is as big as itself: its field is made to reach just far enough
+// for that (reachOf). But a higher level is a longer, fuller field, so
+// two lumps further apart add up to it between them and run together, and
+// a mass is fuller between its lumps: at 0.2 two clusters of a size join
+// across a gap of about a quarter of their radius, at 0.6 across nearly
+// their whole radius. A cluster is several lumps, so it is fuller itself
+// too: about a quarter wider at 0.6 than at 0.2.
+export const USUAL_LEVEL = 0.2;
+const reachOf = (level) => 1 / Math.sqrt(1 - Math.cbrt(level)); // a lump's field reaches this many times its radius
 const HOLLOW = { under: 1, wide: 1.45, strong: 1.25 }; // the hollow: its middle this far under the cluster's (as a share of its half-height), reaching this many times its radius, this strong. (So the leaves end about a third of the way down from a cluster's middle to where a ball's underside would be.)
 const SMALLER = [0.8, 1];                             // a cluster's own lump, as a share of the size the light allows it
 const SMALL = { count: [3, 6], size: [0.35, 0.7], out: 0.75 }; // the small lumps on it: how many, how big (shares of its radius), how far out from its middle
@@ -106,7 +116,8 @@ export function byLimb(clumps) {
 // that do; seed: the tree's; noise and pattern: as massGeometry's (the
 // noise carries the leaves a little further, so clusters a little further
 // apart can meet).
-export function groupsOf(clumps, { merge = 1, seed = 1, noise = 0, pattern } = {}) {
+export function groupsOf(clumps, { merge = 1, seed = 1, noise = 0, pattern, level = USUAL_LEVEL } = {}) {
+  const REACH = reachOf(level);
   const n = clumps.length;
   const middle = clumps.map((clump) => clump.center);
   const apart = (i, j) => Math.hypot(middle[i][0] - middle[j][0], middle[i][1] - middle[j][1], middle[i][2] - middle[j][2]);
@@ -167,12 +178,13 @@ function chanceOf(own, seed) {
 // full); pattern: what the noise is like ({ type, size, detail, bend,
 // billow }: ./leafNoise.js; the usual one if none is given); merge: how
 // many of the clusters near enough to run together do (1: all, 0: none);
-// seed: the tree's (for the noise, and for which merge).
-export function massGeometry(clumps, { cell = 0.9, rough = 0.25, noise = 0, merge = 1, seed = 1, pattern = USUAL_PATTERN } = {}) {
+// seed: the tree's (for the noise, and for which merge); level: how far
+// the clusters' leaves reach toward each other (see USUAL_LEVEL).
+export function massGeometry(clumps, { cell = 0.9, rough = 0.25, noise = 0, merge = 1, seed = 1, pattern = USUAL_PATTERN, level = USUAL_LEVEL } = {}) {
   const out = { position: [], color: [], branch: [] };
   const whole = patternFrom(pattern);
   for (const limb of byLimb(clumps)) {
-    for (const group of groupsOf(limb, { merge, seed, noise, pattern: whole })) massInto(out, group, cell, rough, Math.max(0, noise), seed, whole);
+    for (const group of groupsOf(limb, { merge, seed, noise, pattern: whole, level })) massInto(out, group, cell, rough, Math.max(0, noise), seed, whole, level);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(out.position, 3));
@@ -189,7 +201,8 @@ function fieldOf(lump, R, x, y, z) {
   return q < 1 ? (1 - q) * (1 - q) * (1 - q) : 0;
 }
 
-function massInto(out, clumps, cell, rough, noise, seed, pattern) {
+function massInto(out, clumps, cell, rough, noise, seed, pattern, LEVEL = USUAL_LEVEL) {
+  const REACH = reachOf(LEVEL);
   const all = clumps.map((clump) => {
     const lumps = lumpsOf(clump);
     return { clump, full: lumps.filter((lump) => lump.weight > 0), hollow: lumps.find((lump) => lump.weight < 0) };
