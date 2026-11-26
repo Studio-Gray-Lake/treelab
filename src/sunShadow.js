@@ -99,7 +99,10 @@ const SUN_DISC = /* glsl */ `
 					// different way for each pixel: the same for every pixel,
 					// they show the shadow map's own texels as blocks.)
 					if ( k == ${FIRST} && ( shown <= 0.0 || shown >= ${FIRST.toFixed(1)} ) ) return mix( 1.0, shown / ${FIRST.toFixed(1)}, shadowIntensity );
-					vec2 disc = k < ${FIRST} ? vogelDiskSample( k, ${FIRST}, turn ) : vogelDiskSample( k - ${FIRST}, ${DISC}, turn + 2.4 );
+					// (Both sides of the choice are worked out, whichever is taken: so the second
+					// never asks for a point before its first. That would be the square root of a
+					// number below 0, which the shader compiler warns of, though nothing used it.)
+					vec2 disc = k < ${FIRST} ? vogelDiskSample( k, ${FIRST}, turn ) : vogelDiskSample( max( k - ${FIRST}, 0 ), ${DISC}, turn + 2.4 );
 					vec3 through = place + ( side * disc.x + over * disc.y ) * ( ${SUN_WIDE} * way );
 					float past = sunLook( shadowMap, toMap, through, shadowBias, ${FAR_UP.toFixed(1)}, deep, i );
 					// (Something near, seen through the crowns' gap where the straight look can't see it.)

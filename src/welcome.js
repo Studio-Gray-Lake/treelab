@@ -9,11 +9,11 @@ export const ABOUT = 'https://studiograylake.com/news/treelab-0-3/';
 export const WELCOME_STORE = 'treelab.welcome';
 const OFF = 'off';
 
-// Whether the address carries a view: a share link (#s=…), or one of
-// TreeLab's first links (#kind=…&seed=…&variant=…).
+// Whether the address carries a view: a share link (#v=…; #s=… up to
+// 0.3.1), or one of TreeLab's first links (#kind=…&seed=…&variant=…).
 export function opensOnAView(hash = '') {
   const text = hash.replace(/^#/, '');
-  return text.startsWith('s=') || new URLSearchParams(text).has('kind');
+  return text.startsWith('v=') || text.startsWith('s=') || new URLSearchParams(text).has('kind');
 }
 
 // Whether this viewer asked not to see the card again. `store` gives the

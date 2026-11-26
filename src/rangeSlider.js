@@ -10,6 +10,11 @@ import { Controller } from 'three/addons/libs/lil-gui.module.min.js';
 //   new RangeController(folder, object, property, min, max, step)
 //
 // onChange and onFinishChange work as on lil-gui's own rows.
+//
+// mark(value) shows one tree's own value on the track, a red line with the
+// number under it (mark(null) takes it away). It is only shown: the handles
+// are the kind's least and most, the mark is where one of its trees fell.
+// A value outside the track is marked at its end.
 export class RangeController extends Controller {
   constructor(parent, object, property, min, max, step) {
     super(parent, object, property, 'range');
@@ -30,7 +35,12 @@ export class RangeController extends Controller {
       thumb.addEventListener('blur', () => this._callOnFinishChange());
       return thumb;
     });
-    this.$track.append(this.$fill, ...this.$thumbs);
+    this.$mark = el('div', 'range-mark');
+    this.$markValue = el('span', 'range-mark-value');
+    this.$mark.append(this.$markValue);
+    this.$mark.hidden = true;
+    this._mark = null;
+    this.$track.append(this.$fill, ...this.$thumbs, this.$mark);
     this.$value = el('button', 'range-value');
     this.$value.type = 'button';
     this.$value.addEventListener('click', () => this._edit());
@@ -39,6 +49,11 @@ export class RangeController extends Controller {
 
     this.$track.addEventListener('pointerdown', (e) => this._press(e));
     this.updateDisplay();
+  }
+
+  mark(value) {
+    this._mark = Number.isFinite(value) ? value : null;
+    return this.updateDisplay();
   }
 
   // The values as the handles read them (clamped to the track, in step).
@@ -165,6 +180,18 @@ export class RangeController extends Controller {
     this.$fill.style.width = `calc(${at(hi)} - ${at(lo)})`;
     this.$value.textContent = lo === hi ? format(lo, this._decimals) : `${format(lo, this._decimals)}–${format(hi, this._decimals)}`;
     const name = this.$name.textContent;
+    const marked = this._mark !== null;
+    this.domElement.classList.toggle('marked', marked);
+    this.$mark.hidden = !marked;
+    if (marked) {
+      const along = Math.min(1, Math.max(0, (this._mark - this._min) / (this._max - this._min)));
+      const says = format(this._mark, Math.min(2, this._decimals + 1));
+      this.$mark.style.left = `${100 * along}%`;
+      this.$markValue.textContent = says;
+      // (Near an end of the track, the number stays inside it.)
+      this.$markValue.dataset.side = along < 0.12 ? 'left' : along > 0.88 ? 'right' : 'middle';
+      this.$track.title = `${name}: this tree's is ${says}`;
+    } else this.$track.removeAttribute('title');
     [lo, hi].forEach((v, i) => {
       this.$thumbs[i].setAttribute('aria-valuenow', String(v));
       this.$thumbs[i].setAttribute('aria-label', `${name}: ${i ? 'most' : 'least'}`);

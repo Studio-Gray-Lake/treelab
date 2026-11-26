@@ -5,7 +5,8 @@ import { placeForest } from '../src/forest.js';
 import { KINDS } from '../src/kinds.js';
 import { sunAt } from '../src/light.js';
 import { presetOf } from '../src/presets.js';
-import { changes, defaultSettings, fromLink, normalize, toLink } from '../src/settings.js';
+import { fromShortLink, toShortLink } from '../src/link.js';
+import { changes, defaultSettings, normalize } from '../src/settings.js';
 
 // The starting points (src/scenes.js): whole settings, each one valid, told
 // apart from each other and from a visitor's own.
@@ -75,7 +76,7 @@ test('settings are told for the starting point they are; a change makes them cus
 });
 
 test('a link to the misty wood opens on it, among the trees', () => {
-  const { settings, notes } = fromLink(toLink(sceneSettings('misty wood')));
+  const { settings, notes } = fromShortLink(toShortLink(sceneSettings('misty wood')));
   assert.deepEqual(notes, []);
   assert.equal(sceneOf(settings), 'misty wood');
   assert.equal(settings.view.stand, true);

@@ -49,6 +49,7 @@ import { massGeometry } from './leafMass.js';
 const BARK_FOOT = [0.3, 0.25, 0.2];     // grey-brown, darker and browner at the foot
 const BARK_LIMBS = [0.43, 0.38, 0.31];  // greyer up the limbs
 const BROKEN = [0.62, 0.55, 0.42];      // wood without bark, where a branch broke off
+const MARK = [0, 0, 0];                 // (where the bark's marks' pattern is worked out)
 const FACET = 0.4;                      // m: about how wide a side of thick wood is
 const CURVED = [0.14, 0.28];            // wood is drawn as a curve through its steps if it's at least this thick: m, and as a share of the trunk's thickness (the more of the two)
 const COLLARED = 0.1;                   // m: a branch at least this thick has its collar drawn (a thinner one's is too small to see)
@@ -83,7 +84,8 @@ function cornerChance(i, k, salt) {
 // low down (see ./oak.js).
 const MARKED = 0.6; // m: a trunk this thick (its radius) is as marked as its sliders say; a thinner one less, a thicker one more
 // How marked a trunk of this thickness is (1 at MARKED).
-export const agedBy = (girth) => Math.min(1.6, Math.pow(Math.max(0, girth) / MARKED, 1.5));
+// (at: the thickness at which this kind of tree is as marked as its sliders say; an oak's unless its frame says otherwise.)
+export const agedBy = (girth, at = MARKED) => Math.min(1.6, Math.pow(Math.max(0, girth) / at, 1.5));
 // Over how many metres of height a trunk's marks thin out to about a third.
 export const fadesOver = (girth) => 1.5 + 6 * girth;
 // How much of its marks is left at a height above the ground (high: 0 at
@@ -99,11 +101,36 @@ export function meshOak(layout) {
   const w = layout.wood;
   const out = { position: [], color: [], branch: [] };
   const lumps = pushesOf(w.seed);
-  const bark = (y, shade = 1) => {
-    const t = clamp(y / Math.max(1, w.height * 0.5)), f = t * t * (3 - 2 * t);
-    // (The kind's own bark, if it has one: the oak's otherwise.)
-    const foot = w.bark?.foot ?? BARK_FOOT, limbs = w.bark?.limbs ?? BARK_LIMBS;
-    return [0, 1, 2].map((k) => (foot[k] + (limbs[k] - foot[k]) * f) * shade);
+  // The bark's colour at a height (y, m), darkened by `shade`; r: how thick
+  // the wood is there (its radius, m), and at: where on it (for the marks).
+  // The kind's own bark, if it has one (a frame's "bark", ./oak.js): the
+  // oak's otherwise. A bark may also say:
+  // - how high its foot's colour reaches ("footRise": [m, and m more for
+  //   each metre the trunk is thick]): an old birch's foot is black for a
+  //   metre or two, a young one's hardly at all. Otherwise: half the
+  //   tree's height, as an oak's;
+  // - what colour its thin wood is ("thin": { color, below (m) }): a
+  //   birch's twigs and thin branches are dark, and whiten as they thicken;
+  // - that its thick wood has dark marks ("marks": { color, share }): a
+  //   birch's black scars, in streaks across the trunk.
+  const own = w.bark ?? {};
+  const footReach = own.footRise ? Math.max(0.05, own.footRise[0] + own.footRise[1] * w.girth) : Math.max(1, w.height * 0.5);
+  const bark = (y, shade = 1, r = Infinity, at = null) => {
+    const t = clamp(y / footReach), f = t * t * (3 - 2 * t);
+    const foot = own.foot ?? BARK_FOOT, limbs = own.limbs ?? BARK_LIMBS;
+    const color = [0, 1, 2].map((k) => foot[k] + (limbs[k] - foot[k]) * f);
+    if (own.thin) {
+      // (From its own colour at 0.6 of that thickness to the thick wood's at 1.6 of it.)
+      const thin = 1 - clamp((r / own.thin.below - 0.6) / 1);
+      if (thin > 0) for (let k = 0; k < 3; k++) color[k] += (own.thin.color[k] - color[k]) * thin * thin * (3 - 2 * thin);
+      if (own.marks && at && thin < 0.5) {
+        // (Streaks: a pattern stretched round the trunk, close together up it.)
+        const streak = lumps(at[0] * 1.3, at[1] * 7, at[2] * 1.3, MARK)[1] + 0.5 * lumps(at[0] * 4, at[1] * 19, at[2] * 4, MARK)[2];
+        const dark = clamp((streak - (0.42 - own.marks.share)) / 0.08) * (1 - 2 * thin);
+        if (dark > 0) for (let k = 0; k < 3; k++) color[k] += (own.marks.color[k] - color[k]) * dark;
+      }
+    }
+    return color.map((c) => c * shade);
   };
   const trunk = w.runs.find((run) => run.trunk);
   const look = { bark, lumps, sidesOf: sidesOfTree(w) };
@@ -127,7 +154,10 @@ export function meshOak(layout) {
     const p = new THREE.Vector3(...c.center).applyMatrix4(lean);
     return { x: p.x, y: p.y, z: p.z, r: c.radius };
   });
-  const { height, reach } = measure(foliage, wood);
+  const measured = measure(foliage, wood);
+  // (How far it reaches is measured on its leaves. A tree that has dropped some or all of them, the season's,
+  // reaches as far as its crown does all the same: a bare tree is not a tree of no width.)
+  const height = measured.height, reach = layout.oak?.carried < 1 ? Math.max(measured.reach, layout.oak.width / 2) : measured.reach;
   return { wood, foliage, height, reach, crown: reach * CROWN_SHARE, clumps, layout };
 }
 
@@ -376,7 +406,7 @@ function tubeInto(out, points, sides, { bark, lumps, shape, w, trunk, capped, wa
       }
       more = Math.max(0.2, more);
       v.copy(centre).addScaledVector(side, Math.cos(a) * point.r * more).addScaledVector(other, Math.sin(a) * point.r * more);
-      ring.push({ v: v.toArray(), color: bark(v.y, shade), sway });
+      ring.push({ v: v.toArray(), color: bark(v.y, shade, point.r, v.toArray()), sway });
     }
     rings.push(ring);
   }
@@ -395,7 +425,7 @@ function tubeInto(out, points, sides, { bark, lumps, shape, w, trunk, capped, wa
   }
   if (capped) {
     const end = centres[n - 1].clone().addScaledVector(tangents[n - 1], points[n - 1].r * 0.5);
-    const tip = { v: end.toArray(), color: bark(end.y), sway: rings[n - 1][0].sway };
+    const tip = { v: end.toArray(), color: bark(end.y, 1, points[n - 1].r), sway: rings[n - 1][0].sway };
     for (let k = 0; k < sides; k++) triangle(out, rings[n - 1][k], rings[n - 1][(k + 1) % sides], tip);
   }
 }

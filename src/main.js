@@ -4,14 +4,18 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import rigUrl from '../vendor/workshop/rig.glb?url';
 import GUI from 'three/addons/libs/lil-gui.module.min.js';
-import { DEFAULT_SHAPES, KINDS, KIND_CHOICES, kindName } from './kinds.js';
+import { DEFAULT_SHAPES, KINDS, KIND_CHOICES, KIND_CROWNS, KIND_GROUPS, crownOf, evergreen, isOwn, kindName, leafTiming } from './kinds.js';
+import { MixController, mixGroup, mixHead } from './mixTable.js';
+import { LAYERS, layerOf } from './cover.js';
+import { WOODS, plantWood, woodOf } from './woods.js';
 import { createPlanter, recolor, treetops } from './tree.js';
 import { DRAWINGS, ROWS, sectionsOf } from './sections.js';
 import { foliageColor, groundColor, mottleOf } from './colors.js';
 import { PRESETS, presetOf, presetShape } from './presets.js';
 import { createSwayRig } from './swayRig.js';
 import { limitsFor, sliderKind } from './limits.js';
-import { CHOICES, MAX_TREES, RANGES, assign, defaultSettings, fromLink, normalize, toFile, toLink } from './settings.js';
+import { CHOICES, MAX_TREES, RANGES, assign, defaultSettings, looksLikeSettings, normalize, toFile } from './settings.js';
+import { fromOldLink, fromShortLink, toShortLink } from './link.js';
 import { createTerrain, groundFor, PLAIN } from './terrain.js';
 import { placeForest } from './forest.js';
 import { gardenRecords } from './garden.js';
@@ -27,15 +31,20 @@ import { canopyCover } from './canopy.js';
 import { createSkyShade, skyShade, underSky } from './skyShade.js';
 import { underMist } from './mistLight.js';
 import { ADAPTS, createEye, eased, exposureFor, rangeAt } from './eye.js';
+import { drawnIn, focusOf, heightIn, isClick, ringPoints, ringRadius, sameTree, turnRate } from './select.js';
+import { mostFor, readWidths, widthAfter, writeWidths } from './panelWidth.js';
 import { EYE, PIVOT, standingSpot, standingView, stepOnGround } from './stand.js';
 import { createWalker, stepWalker, wanted } from './walker.js';
 import { createFigure } from './figure.js';
 import { trunksOf } from './tree.js';
 import { createGamepad } from '@workshop/gamepad.js';
 import { SCENES, sceneOf, sceneSettings } from './scenes.js';
+import { SEASONS, leavesOf, seasonChanges, seasonOf } from './season.js';
+import { siteOf, siteSays, standOf } from './site.js';
 import { RangeController } from './rangeSlider.js';
 import { OutlineController } from './outlineEditor.js';
 import { agesOf, applyAge, hasAges, reAged } from './age.js';
+import { closedShape, hemmedIn } from './woodGrown.js';
 import { OUTLINE, outlineOf } from './oak/oak.js';
 import { attachTooltips } from './tooltip.js';
 import { shapeTip, tip } from './tips.js';
@@ -52,10 +61,11 @@ import { NEWS, RELEASES, dayOf } from './changelog.js';
 const SKY = 0xbfd1e5; // (the page's colour while it loads)
 const HEAVY = 4e6; // triangles: more and a forest may stutter on an ordinary laptop
 const FLAT_GROUND = 0x7d8f55; // the workshop's ground (the hills are coloured by their vertices)
-const FAR = 3000; // m: how far the ground runs, each way (past the fog's end)
+const FAR = 3000; // m: how far the ground runs, each way (past the far veil's end)
 const STORE = 'treelab.settings'; // where the browser keeps the last settings
 const TEXT_STORE = 'treelab.textSize'; // and this viewer's text size (never in settings or links)
-const FOLD_STORE = 'treelab.folded';   // and which of the two cards this viewer has folded away
+const FOLD_STORE = 'treelab.folded';   // and which of the cards this viewer has folded away
+const WIDTH_STORE = 'treelab.widths';  // and how wide they dragged them (src/panelWidth.js)
 
 // The text size: 1.5 times TreeLab's first size to start (1.25 on a phone).
 const ui = { textSize: innerWidth > 0 && innerWidth < 700 ? 1.25 : 1.5 };
@@ -197,8 +207,8 @@ const GROUND_THROWS_BACK = new THREE.Color(FLAT_GROUND); // the ground's colour:
 const mistSky = new THREE.Color(); // the sky's light in a bit of mist under the open sky (what comes to it from every side, on average)
 
 // The sky's colour a little over the horizon, 4 to 8° up, all the way round,
-// in 5° steps of the compass (raw light, before the tone mapping): the fog
-// takes the colour the camera faces, so far hills fade into the sky behind
+// in 5° steps of the compass (raw light, before the tone mapping): the far
+// veil (three.js's fog: the stand-in for the haze over a distance) takes the colour the camera faces, so far hills fade into the sky behind
 // them, not into a colour of their own. (Looked at in four quarters, each 90°
 // wide; null where this browser can't read the colours back.)
 const LOOK = { width: 57, height: 2, up: 6, tall: 4 };
@@ -236,14 +246,15 @@ function horizonColors() {
   return sums.map(([r, g, b, n]) => new THREE.Color().setRGB(r / n, g / n, b / n));
 }
 let horizon = null;    // (the sky's colours round the horizon, as above)
-let fallbackFog = null; // (light.js's, where there are none)
+let fallbackVeil = null; // (light.js's, where there are none)
 
-// The fog's colour for where the camera faces: the horizon's colours across
-// the view, as light (the far haze is mixed in the picture, as light).
+// The far veil's colour for where the camera faces: the horizon's colours
+// across the view, as light (the band of haze over the horizon is mixed in
+// the picture, as light).
 const facing = new THREE.Vector3(), seen = new THREE.Color();
-function fitFogColor() {
+function fitVeilColor() {
   if (!horizon) {
-    if (fallbackFog) haze.material.uniforms.color.value.copy(scene.fog.color.copy(fallbackFog));
+    if (fallbackVeil) haze.material.uniforms.color.value.copy(scene.fog.color.copy(fallbackVeil));
     return;
   }
   camera.getWorldDirection(facing);
@@ -261,8 +272,8 @@ function fitFogColor() {
   haze.material.uniforms.color.value.copy(scene.fog.color.copy(seen));
 }
 
-// A haze in the fog's colour over the horizon, fading out a few degrees up:
-// where the ground runs out, or past the fog, it meets the sky without a
+// A band of haze in the far veil's colour over the horizon, fading out a few
+// degrees up: where the ground runs out, or past the veil, it meets the sky without a
 // seam. Thinner toward the sun, whose glow shines through.
 const haze = new THREE.Mesh(
   new THREE.SphereGeometry(1, 48, 24),
@@ -290,7 +301,7 @@ const haze = new THREE.Mesh(
     side: THREE.BackSide,
     transparent: true,
     depthWrite: false,
-    toneMapped: false, // (its colour is the fog's: light, as everything in the picture)
+    toneMapped: false, // (its colour is the far veil's: light, as everything in the picture)
   }),
 );
 haze.scale.setScalar(100);
@@ -389,8 +400,8 @@ function lightFromSky(L) {
   groundUnder.visible = true;
   // (Where the horizon can't be read: its hue from src/light.js, about as
   // bright as the low sky is against the whole.)
-  fallbackFog = L.fog.clone().multiplyScalar((1.6 * L.skyGives) / (Math.PI * brightness(L.fog)));
-  fitFogColor();
+  fallbackVeil = L.veil.clone().multiplyScalar((1.6 * L.skyGives) / (Math.PI * brightness(L.veil)));
+  fitVeilColor();
 }
 
 // The day running ("time runs", in the light folder): the hour moves on,
@@ -410,6 +421,7 @@ function runDay(dt) {
   if (saveDue <= 0) {
     saveDue = 1;
     showScene();
+    showSeason();
     remember();
   }
 }
@@ -438,7 +450,7 @@ function settleEye(times = 5) {
 }
 const _sunLight = new THREE.Color(), _skyLight = new THREE.Color();
 
-// The sun, its shadows and the fog fitted to what's shown: `radius` m round
+// The sun, its shadows and the far veil fitted to what's shown: `radius` m round
 // `center`, up to `top` m high.
 let standing = false; // (the camera among the trees, at eye height: further on)
 function fitStage(center, radius, top) {
@@ -471,10 +483,10 @@ function fitStage(center, radius, top) {
   if (!standing) controls.maxDistance = Math.max(60, radius * 3.5);
 }
 
-// The fog starts a little past what's shown, wherever the camera is, and
-// thickens into the sky's colour at the horizon well before the ground ends.
+// The far veil starts a little past what's shown, wherever the camera is,
+// and thickens into the sky's colour at the horizon well before the ground ends.
 let stageRadius = 9;
-function fitFog() {
+function fitVeil() {
   const d = camera.position.distanceTo(controls.target);
   scene.fog.near = Math.max(30, d + stageRadius * 0.5);
   scene.fog.far = Math.min(FAR * 0.6, Math.max(250, d + stageRadius * 4 + 150));
@@ -573,7 +585,7 @@ function setTerrain() {
 }
 
 // Beyond the hills, plain ground on to the horizon (the hills flatten into it
-// at their edge), so that far off everything melts into the fog.
+// at their edge), so that far off everything melts into the far veil.
 const plainMaterial = new THREE.MeshStandardMaterial({ roughness: 1 });
 underSky(plainMaterial); // (the wood's shade reaches a little way out onto it)
 underMist(plainMaterial); // (and the mist lies on it too)
@@ -684,7 +696,8 @@ let stats = { tree: null, forest: null };
 // last settings, or the defaults.
 function startingSettings() {
   const hash = location.hash.slice(1);
-  if (hash.startsWith('s=')) return { ...fromLink(hash.slice(2)), from: 'the link' };
+  if (hash.startsWith('v=')) return { ...fromShortLink(hash.slice(2)), from: 'the link' };
+  if (hash.startsWith('s=')) return { ...fromOldLink(hash.slice(2)), from: 'the link' }; // (links made up to 0.3.1: longer, still read, as 0.3.1 read them)
   const old = new URLSearchParams(hash); // (TreeLab's first links: #kind=…&seed=…&variant=…)
   if (old.has('kind')) return { ...normalize({ tree: { kind: old.get('kind'), seed: Number(old.get('seed')), variant: Number(old.get('variant')) } }), from: 'the link' };
   try {
@@ -702,10 +715,11 @@ let saveTimer;
 function remember() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    const link = toLink(settings);
-    const changed = link !== toLink(defaultSettings());
-    history.replaceState(null, '', changed ? `#s=${link}` : location.pathname + location.search);
+    const link = toShortLink(settings);
+    const changed = link !== toShortLink(defaultSettings());
+    history.replaceState(null, '', changed ? `#v=${link}` : location.pathname + location.search);
     showScene();
+    showSeason();
     try {
       localStorage.setItem(STORE, toFile(settings));
     } catch {
@@ -713,7 +727,7 @@ function remember() {
     }
   }, 300);
 }
-const shareLink = () => `${location.origin}${location.pathname}${location.search}#s=${toLink(settings)}`;
+const shareLink = () => `${location.origin}${location.pathname}${location.search}#v=${toShortLink(settings)}`;
 
 // --- What the page shows -------------------------------------------------------------
 
@@ -794,8 +808,17 @@ const count = (v) => Math.round(v).toLocaleString('en');
 // --- Growing ----------------------------------------------------------------------
 
 let rig = null;
-const colorOf = (t, out) => foliageColor(t, settings.colors, settings.autumn, out);
-const mottle = (kind) => mottleOf(kind, settings.autumn);
+const colorOf = (t, out) => foliageColor(t, settings.colors, settings.autumn, out, settings.season);
+const mottle = (kind) => mottleOf(kind, settings.autumn, settings.season);
+// A kind's shape as it's grown at this time of year: with the share of its
+// leaves it carries now (src/season.js), if that's less than all of them.
+// (Only TreeLab's own kinds that lose their leaves: an evergreen keeps
+// them, and the workshop's trees are grown by the workshop's code.)
+function inSeason(kind, variant, shape) {
+  if (!isOwn(kind) || evergreen(kind)) return shape;
+  const leaves = leavesOf(leafTiming(kind), settings.season, settings.autumn, variant);
+  return leaves >= 1 ? shape : { ...shape, leaves };
+}
 
 // The ground's autumn cast: the flat ground's colour, and the hills'
 // (whose colours are their vertices', the material's a multiplier).
@@ -819,8 +842,11 @@ let gardenSize = null;
 const personByTree = new THREE.Vector3(-2, 0, 0.6); // where the figure stands by them
 const growTree = safely(function growTree({ frame = false } = {}) {
   const planter = planters.tree;
-  const layout = gardenRecords(settings.tree, settings.shapes, planter);
-  const numbers = planter.plant(garden, layout.records, settings.shapes, { colorOf, mottle });
+  // (One shape for a tree, asked for the same way each time: grown once, by the grid that spaces them or by the planter.)
+  const shapeOf = (kind, variant) => inSeason(kind, variant, settings.shapes[kind]);
+  const layout = gardenRecords(settings.tree, settings.shapes, planter, shapeOf);
+  const numbers = planter.plant(garden, layout.records, settings.shapes, { colorOf, mottle, shapeOf });
+  keepSelection('tree', layout.records);
   wireframe(garden);
   clearLabels();
   if (settings.tree.show === 'grid' && settings.tree.labels) {
@@ -839,7 +865,7 @@ const growTree = safely(function growTree({ frame = false } = {}) {
   dirty.tree = false;
 
   const one = settings.tree.show !== 'grid';
-  const first = planter.model(layout.records[0].kind, layout.records[0].seed, layout.records[0].variant, settings.shapes[layout.records[0].kind]).tree;
+  const first = planter.model(layout.records[0].kind, layout.records[0].seed, layout.records[0].variant, inSeason(layout.records[0].kind, layout.records[0].variant, settings.shapes[layout.records[0].kind])).tree;
   stats.tree = one
     ? [['height', metres(first.height)], ['reach', metres(first.reach)], ['crown', metres(first.crown)], ['triangles', count(numbers.triangles)], ['grown in', `${numbers.ms.toFixed(1)} ms`]]
     : [['trees', count(numbers.trees)], ['tallest', metres(layout.tallest)], ['spacing', metres(layout.spacing)], ['triangles', count(numbers.triangles)], ['grown in', `${numbers.ms.toFixed(1)} ms`]];
@@ -850,6 +876,7 @@ const growTree = safely(function growTree({ frame = false } = {}) {
     fitStage(new THREE.Vector3(), layout.extent, layout.tallest);
     showStats();
   }
+  showMarks();
   if (frame) frameView();
 });
 
@@ -857,8 +884,6 @@ const growTree = safely(function growTree({ frame = false } = {}) {
 const growForest = safely(function growForest({ frame = false } = {}) {
   const start = performance.now();
   const newGround = setTerrain();
-  const { records, report } = placeForest(settings.forest, terrain);
-  for (const r of records) r.seed = settings.tree.seed;
   // A kind of several ages: each of its shapes is the Tree tab's tree at an
   // age of its own (src/age.js), and since its age sets its size, the
   // forest's own "size" varies it a third as much.
@@ -866,9 +891,49 @@ const growForest = safely(function growForest({ frame = false } = {}) {
     const ages = agesOf(settings.forest.variants, settings.forest.mix[kind].ages, settings.forest.mix[kind].old);
     return [kind, { ages, shapes: ages.map((age) => reAged(kind, settings.shapes[kind], age)) }];
   }));
-  for (const r of records) if (aged.has(r.kind)) r.size = 1 + (r.size - 1) / 3;
-  const shapeOf = (kind, variant) => aged.get(kind)?.shapes[variant] ?? settings.shapes[kind];
+  // Grown in a wood (src/woodGrown.js): with "crowns close in a wood", the trees of TreeLab's own kinds are placed as
+  // they would grow among others, their crowns narrow (so the rules let them stand closer, and a wood set by cover takes
+  // more of them); then each is asked whether it is hemmed in. One that is keeps its forest-grown shape, as a variant of
+  // its own past the kind's others (variant + "variants a kind"); one at the edge, in a clearing or above the rest grows
+  // in the open after all. Each at its own age, if its kind is of several.
+  const n = settings.forest.variants;
+  const closes = settings.forest.closes;
+  const woodShapes = new Map();
+  const woodShape = (kind, variant) => {
+    const key = `${kind}|${variant}`;
+    if (!woodShapes.has(key)) {
+      const closed = closedShape(kind, settings.shapes[kind]);
+      woodShapes.set(key, aged.has(kind) ? reAged(kind, closed, aged.get(kind).ages[variant]) : closed);
+    }
+    return woodShapes.get(key);
+  };
+  // (The rules reckon with how tall and wide each tree stands: its own shape's, at its own age. src/site.js.)
+  const stands = new Map();
+  const standing = (kind, variant) => {
+    const wood = closes && isOwn(kind);
+    const key = `${kind}|${aged.has(kind) || wood ? variant : 0}|${wood}`;
+    if (!stands.has(key)) stands.set(key, standOf(wood ? woodShape(kind, variant) : aged.get(kind)?.shapes[variant] ?? settings.shapes[kind]));
+    return stands.get(key);
+  };
+  // (A kind of several ages is sized by its age: the forest's own "size" varies it a third as much.)
+  const sized = { ...settings.forest, sizeOf: (kind, size) => (aged.has(kind) ? 1 + (size - 1) / 3 : size) };
+  const { records, report } = placeForest(sized, terrain, standing);
+  for (const r of records) r.seed = settings.tree.seed;
+  let closedCount = 0;
+  if (closes) {
+    const trees = records.map((r) => { const s = standing(r.kind, r.variant); return { x: r.x, z: r.z, height: s.height * r.size, crown: s.crown * r.size }; });
+    const hemmed = hemmedIn(trees);
+    records.forEach((r, i) => { if (isOwn(r.kind) && hemmed.has(i)) { r.variant += n; closedCount++; } });
+  }
+  // (Each tree of TreeLab's own: its age and whether it grew in a wood, for the panel to say when it is selected.)
+  for (const r of records) {
+    if (!isOwn(r.kind)) continue;
+    r.wood = r.variant >= n;
+    r.age = aged.get(r.kind)?.ages[r.variant % n] ?? settings.shapes[r.kind].age;
+  }
+  const shapeOf = (kind, variant) => inSeason(kind, variant, variant >= n ? woodShape(kind, variant - n) : aged.get(kind)?.shapes[variant] ?? settings.shapes[kind]);
   const numbers = planters.forest.plant(woods, records, settings.shapes, { colorOf, mottle, shapeOf });
+  keepSelection('forest', records);
   trunks = trunksOf(woods); // (what the figure walks round)
   wireframe(woods);
   setEdge();
@@ -879,14 +944,32 @@ const growForest = safely(function growForest({ frame = false } = {}) {
 
   const hectares = areaOf({ shape: settings.forest.area, radius: settings.forest.radius }) / 10000;
   const kinds = KINDS.map((k) => [k, records.filter((r) => r.kind === k).length]).filter(([, n]) => n);
+  for (const [kind, row] of mixRows) row.stands(records.filter((r) => r.kind === kind).length); // (the mix's table: how many of each stand)
+  // (By cover: what stands of each layer's cover, and of each kind's share of its layer, beside what was asked.)
+  const percent = (v) => `${Math.round(100 * v)}%`;
+  for (const [name, told] of Object.entries(report.layers ?? {})) {
+    const any = Object.keys(told.kinds).length > 0;
+    layerRows.get(name).says(any ? percent(told.stands) : 'none', any
+      ? `${percent(told.stands)} of the ground lies under a crown of the ${name} as planted (asked: ${percent(told.asked)}).${told.full ? ` As many seeds fell as a forest may hold (${count(MAX_TREES)}): the rules and the ground let no more of them stand.` : ''}`
+      : `No kind of the ${name} is ticked.`);
+    for (const [kind, got] of Object.entries(told.kinds)) {
+      mixRows.get(kind).says(`${percent(got.stands)} · ${got.trees}`, `${kindName(kind)}: ${percent(got.stands)} of the ${name}'s crowns as planted (asked: ${percent(got.asked)}), ${got.trees} ${got.trees === 1 ? 'tree' : 'trees'}.`);
+    }
+  }
+  if (report.layers) for (const [kind, row] of mixRows) if (!(kind in report.layers[layerOf(kind)].kinds)) row.says('');
   stats.forest = [
     ['trees', count(records.length)],
     ['per hectare', count(records.length / hectares)],
-    ['canopy cover', `${Math.round(100 * canopyCover(woods, { shape: settings.forest.area, radius: settings.forest.radius }).cover)}%`],
+    // (By cover the layers have rows of their own, below: this is every layer together, measured on the trees as grown.)
+    [report.layers ? 'under leaves' : 'canopy cover', `${Math.round(100 * canopyCover(woods, { shape: settings.forest.area, radius: settings.forest.radius }).cover)}%`],
+    ...Object.entries(report.layers ?? {}).filter(([, told]) => Object.keys(told.kinds).length).map(([name, told]) => [`${name} crowns`, `${percent(told.stands)} of the ground (asked ${percent(told.asked)})`]),
     ...kinds.map(([k, n]) => [kindName(k), `${count(n)} (${Math.round((100 * n) / Math.max(1, records.length))}%)`]),
     ...kinds.filter(([k]) => aged.has(k)).map(([k]) => [`${kindName(k)} ages`, `${aged.get(k).ages.join(', ')} years`]),
+    ...(settings.forest.closes ? [['grown in a wood', `${count(closedCount)} of ${count(records.length)}`]] : []),
     ...(report.clearings ? [['in clearings', `${count(report.clearings)} left out`]] : []),
     ...(report.steep ? [['too steep', `${count(report.steep)} left out`]] : []),
+    ...(report.crowded ? [['no room', `${count(report.crowded)} crowded out`]] : []),
+    ...(report.shaded ? [['too dark', `${count(report.shaded)} shaded out`]] : []),
     ...(report.thinnedTo ? [['thinned', `to ${count(report.thinnedTo)} a hectare (at most ${count(MAX_TREES)} trees)`]] : []),
     ...(report.capped ? [['over the cap', `${count(report.capped)} left out`]] : []),
     ['trees grown', `${numbers.models} shapes, ${numbers.grown} new`],
@@ -900,6 +983,7 @@ const growForest = safely(function growForest({ frame = false } = {}) {
     fitForestStage();
     showStats();
   }
+  showMarks();
   if (frame) frameView();
 });
 
@@ -955,7 +1039,7 @@ function frameView() {
     camera.position.copy(controls.target).addScaledVector(new THREE.Vector3(0.5, 0.42, 1).normalize(), (r * 1.25) / Math.min(tanV * camera.aspect, tanV) + 6);
   }
   controls.update();
-  fitFog(); // (at once: the first frame may be a while coming)
+  fitVeil(); // (at once: the first frame may be a while coming)
 }
 
 // Walking among the trees (the Forest tab's "walk among the trees":
@@ -976,7 +1060,7 @@ const FOLLOW = { minDistance: 1.5, maxDistance: 25, minPolarAngle: Math.PI * 0.0
 const CHEST = 1.35;  // m above its feet: what the camera behind it turns round
 const BEHIND = 4.5;  // m: how far behind it the camera starts
 const hintEl = document.getElementById('hint');
-const HINT = { round: hintEl.textContent, among: 'W A S D or the arrows walk, Shift runs, Space jumps. Drag to look round. Double-click a tree to see it alone. H hides the panels.' };
+const HINT = { round: hintEl.textContent, among: 'W A S D or the arrows walk, Shift runs, Space jumps. Drag to look round. Click a tree to select it, double-click to see it alone. H hides the panels.' };
 const HOW_TO_WALK = 'W A S D or the arrow keys walk, Shift runs, Space jumps; a game pad works too (left stick, right trigger to run, A to jump). Drag to look round.';
 const walker = createWalker();  // the figure walking (src/walker.js)
 const still = createWalker();   // and standing where it's put, when nobody walks it
@@ -989,6 +1073,9 @@ function setStanding(on) {
   standing = Boolean(on);
   throughEyes = settings.view.eyes;
   held.clear();
+  // (Walking: the keys are the figure's. A row just clicked still has the keyboard, and would take them: the
+  // arrows would change its list, Space untick its box.)
+  if (standing) document.activeElement?.blur?.();
   rolling = 0;
   hintEl.textContent = standing ? HINT.among : HINT.round;
   if (!standing) Object.assign(controls, ORBIT, { maxDistance: Math.max(60, stageRadius * 3.5) });
@@ -1097,6 +1184,7 @@ const tabButtons = [...document.querySelectorAll('#tabs button[data-tab]')];
 let shown = null; // the tab on screen
 function showTab(tab, { frame = false, keepView = true } = {}) {
   if (shown && shown !== tab && keepView) views[shown] = { position: camera.position.clone(), target: controls.target.clone(), standing };
+  if (shown !== tab) select(null); // (a selected tree is one of the tab's it was picked on)
   shown = tab;
   settings.tab = tab;
   for (const b of tabButtons) b.setAttribute('aria-selected', String(b.dataset.tab === tab));
@@ -1129,23 +1217,24 @@ function showTab(tab, { frame = false, keepView = true } = {}) {
     controls.update();
   }
   showStats();
+  showKind(); // (the left panel: this tab's kind)
   remember();
 }
 for (const b of tabButtons) b.addEventListener('click', () => showTab(b.dataset.tab));
 
 // --- The panel ----------------------------------------------------------------------
 
-// Both cards (what's shown, on the left; the settings, on the right) fold
-// away to their top row: each by its own button, both by H. Which are
-// folded is this viewer's own, kept in the browser (never in settings or
-// links).
-const cards = { info: document.getElementById('info'), panel: document.getElementById('panel') };
+// The cards (what's shown and one kind's settings, on the left; the
+// settings, on the right) fold away to their top row: each by its own
+// button, all by H. Which are folded is this viewer's own, kept in the
+// browser (never in settings or links).
+const cards = { info: document.getElementById('info'), kind: document.getElementById('kind'), panel: document.getElementById('panel') };
 const foldButtons = [...document.querySelectorAll('.fold[data-folds]')];
 function fold(name, folded) {
   cards[name].classList.toggle('folded', folded);
   const button = foldButtons.find((b) => b.dataset.folds === name);
   button.setAttribute('aria-expanded', String(!folded));
-  button.title = folded ? 'Show it again (H: both)' : 'Fold it away (H: both)';
+  button.title = folded ? 'Show it again (H: all)' : 'Fold it away (H: all)';
   try {
     localStorage.setItem(FOLD_STORE, Object.keys(cards).filter((key) => cards[key].classList.contains('folded')).join(','));
   } catch {
@@ -1154,9 +1243,9 @@ function fold(name, folded) {
 }
 const folded = (name) => cards[name].classList.contains('folded');
 for (const button of foldButtons) button.addEventListener('click', () => fold(button.dataset.folds, !folded(button.dataset.folds)));
-// (H: both away, or, if both already are, both back.)
+// (H: all away, or, if all already are, all back.)
 const foldBoth = () => {
-  const away = !(folded('info') && folded('panel'));
+  const away = !Object.keys(cards).every(folded);
   for (const name of Object.keys(cards)) fold(name, away);
 };
 {
@@ -1169,12 +1258,77 @@ const foldBoth = () => {
   for (const name of Object.keys(cards)) fold(name, kept.split(',').includes(name));
 }
 
+// A card's edge, dragged, makes it wider or narrower (src/panelWidth.js):
+// the left of the screen by its right edge, the settings by their left
+// edge. The arrow keys move a focused edge; a double-click puts the width
+// back. How wide is this viewer's own too, kept in the browser.
+{
+  const wide = { left: document.getElementById('left'), panel: document.getElementById('panel') };
+  const grows = { left: 1, panel: -1 };
+  let widths = {};
+  try {
+    widths = readWidths(localStorage.getItem(WIDTH_STORE), Object.keys(wide));
+  } catch {
+    // (no storage)
+  }
+  const keep = () => {
+    try {
+      localStorage.setItem(WIDTH_STORE, writeWidths(widths));
+    } catch {
+      // (no storage)
+    }
+  };
+  const setWidth = (name, width) => {
+    if (width === null) {
+      delete widths[name];
+      wide[name].style.width = '';
+    } else {
+      widths[name] = widthAfter(width, 0, { most: mostFor(innerWidth) });
+      wide[name].style.width = `${widths[name]}px`;
+    }
+  };
+  for (const name of Object.keys(widths)) setWidth(name, widths[name]);
+  for (const edge of document.querySelectorAll('.edge[data-widens]')) {
+    const name = edge.dataset.widens;
+    edge.title = 'Drag to make this wider or narrower. A double-click puts it back.';
+    edge.addEventListener('pointerdown', (e) => {
+      if (e.button > 0) return;
+      e.preventDefault();
+      const from = { x: e.clientX, width: wide[name].getBoundingClientRect().width };
+      edge.setPointerCapture(e.pointerId);
+      edge.classList.add('dragging');
+      const move = (m) => setWidth(name, widthAfter(from.width, m.clientX - from.x, { grows: grows[name], most: mostFor(innerWidth) }));
+      const up = () => {
+        edge.removeEventListener('pointermove', move);
+        edge.removeEventListener('pointerup', up);
+        edge.removeEventListener('pointercancel', up);
+        edge.classList.remove('dragging');
+        keep();
+      };
+      edge.addEventListener('pointermove', move);
+      edge.addEventListener('pointerup', up);
+      edge.addEventListener('pointercancel', up);
+    });
+    edge.addEventListener('keydown', (e) => {
+      const by = { ArrowLeft: -16, ArrowRight: 16 }[e.key];
+      if (!by) return;
+      e.preventDefault();
+      setWidth(name, widthAfter(wide[name].getBoundingClientRect().width, by, { grows: grows[name], most: mostFor(innerWidth) }));
+      keep();
+    });
+    edge.addEventListener('dblclick', () => {
+      setWidth(name, null);
+      keep();
+    });
+  }
+}
+
 // Each part of the panel in a washed-out colour of its own (index.html:
 // [data-tint]), so one tells from the next: the panel's own folders, and
 // the sections of a tree's shape (src/sections.js).
 const TINTS = {
-  tree: 'leaf', show: 'slate', shape: 'paper', forest: 'wood', pattern: 'wood', 'groves and clearings': 'wood', mix: 'leaf', ground: 'earth',
-  light: 'sun', colour: 'autumn', sway: 'air', wind: 'air', view: 'slate', 'save and share': 'paper',
+  tree: 'leaf', show: 'slate', forest: 'wood', pattern: 'wood', 'groves and clearings': 'wood', 'where trees grow': 'wood', mix: 'leaf', ground: 'earth',
+  light: 'sun', 'season and colour': 'autumn', sway: 'air', wind: 'air', view: 'slate', 'save and share': 'paper',
 };
 const SECTION_TINTS = { size: 'slate', trunk: 'bark', roots: 'earth', limbs: 'wood', crown: 'leaf', movement: 'air', other: 'paper' };
 const tint = (folder, name) => {
@@ -1186,7 +1340,18 @@ const tint = (folder, name) => {
 const KIND_OPTIONS = Object.fromEntries(KINDS.map((kind) => [kindName(kind), kind]));
 
 const gui = new GUI({ container: document.getElementById('gui'), title: 'settings' });
-const refreshPanel = () => gui.controllersRecursive().forEach((c) => c.updateDisplay());
+// One kind of tree's settings, on the left of the screen: the selected
+// tree's kind (see "Selecting", below, and fillKindPanel).
+const kindGui = new GUI({ container: document.getElementById('kind-gui'), title: 'kind' });
+const rows = () => [...gui.controllersRecursive(), ...kindGui.controllersRecursive()];
+const refreshPanel = () => rows().forEach((c) => c.updateDisplay());
+// (On a phone there is no room beside the trees: the kind's rows sit under the settings', in the one sheet.)
+{
+  const phone = matchMedia('(max-width: 700px)');
+  const place = () => document.getElementById(phone.matches ? 'gui' : 'kind-gui').append(kindGui.domElement);
+  phone.addEventListener('change', place);
+  place();
+}
 const folders = { tree: [], forest: [] };
 const range = (path) => RANGES[path];
 
@@ -1235,7 +1400,7 @@ function addRange(folder, object, key, name, [lo, hi, step], what) {
 // Tree tab: the tree.
 const treeFolder = gui.addFolder('tree');
 folders.tree.push(treeFolder);
-watch(treeFolder.add(settings.tree, 'kind', KIND_OPTIONS), 'both', { frame: true, also: () => fillShapeFolder() });
+watch(treeFolder.add(settings.tree, 'kind', KIND_OPTIONS), 'both', { frame: true, also: () => showKind() });
 watch(treeFolder.add(settings.tree, 'seed', ...range('tree.seed')), 'both');
 watch(treeFolder.add(settings.tree, 'variant', ...range('tree.variant')), 'tree');
 treeFolder.add({
@@ -1292,7 +1457,8 @@ forestFolder.add({
 watch(forestFolder.add(settings.forest, 'area', CHOICES['forest.area']), 'forest', { also: () => nameRadius() });
 const radiusRow = watch(forestFolder.add(settings.forest, 'radius', ...range('forest.radius')), 'forest', { frame: true });
 const nameRadius = () => radiusRow.name(settings.forest.area === 'circle' ? 'radius R (m)' : 'half its side (m)');
-watch(forestFolder.add(settings.forest, 'density', ...range('forest.density')).name('trees per hectare'), 'forest');
+const densityRow = watch(forestFolder.add(settings.forest, 'density', ...range('forest.density')).name('seeds per hectare'), 'forest');
+watch(forestFolder.add(settings.forest, 'closes').name('crowns close in a wood'), 'forest');
 addPersonRow(forestFolder);
 // The forest from among its trees, or from above (src/stand.js).
 const amongRow = forestFolder.add(settings.view, 'stand').name('walk among the trees').onChange((on) => {
@@ -1325,6 +1491,12 @@ const patternRows = {
 };
 const showPatternRows = () => Object.entries(patternRows).forEach(([p, rows]) => rows.forEach((c) => c.show(settings.forest.pattern === p)));
 
+// Forest tab: the rules for where each kind of tree grows (src/site.js).
+const rulesFolder = gui.addFolder('where trees grow').close();
+folders.forest.push(rulesFolder);
+watch(rulesFolder.add(settings.forest.rules, 'ground', ...range('forest.rules.ground')).name('each kind to its ground'), 'forest');
+watch(rulesFolder.add(settings.forest.rules, 'room', ...range('forest.rules.room')).name('room between trees'), 'forest');
+watch(rulesFolder.add(settings.forest.rules, 'light', ...range('forest.rules.light')).name('light under the crowns'), 'forest');
 const patchFolder = gui.addFolder('groves and clearings').close();
 folders.forest.push(patchFolder);
 watch(patchFolder.add(settings.forest, 'patches').name('groves and clearings'), 'forest', { also: () => showPatchRows() });
@@ -1334,25 +1506,74 @@ const patchRows = [
 ];
 const showPatchRows = () => patchRows.forEach((c) => c.show(settings.forest.patches));
 
-const ageRows = []; // (each kind's age rows, shown or not: called again when settings are loaded)
+// Forest tab: which kinds grow, as a table, a row a kind (src/mixTable.js):
+// whether it grows, its share, and how many of it stand as planted. The
+// kinds are in their groups (src/kinds.js: KIND_GROUPS). A click on a
+// kind's name shows that kind in the panel on the left, where the rest of
+// what is the kind's own is: its shape, its greens, its ages in the
+// forest, where it grows.
+//
+// The mix is set one of two ways ("set the mix"): by count, a kind's share
+// its share of the seeds, the kinds listed by their country; or by cover
+// (src/cover.js), the kinds listed under their layer, the canopy
+// and the underwood, each layer with a row of its own for how much of the
+// ground it covers, and a kind's share its share of its layer's crowns.
+// "A wood of" starts the mix from a ready-made wood (src/woods.js), by
+// cover.
 const mixFolder = gui.addFolder('mix');
 folders.forest.push(mixFolder);
-for (const kind of KINDS) {
-  watch(mixFolder.add(settings.forest.mix[kind], 'on').name(kindName(kind)), 'forest');
-  watch(mixFolder.add(settings.forest.mix[kind], 'share', ...RANGES['forest.mix.share']).name(`${kindName(kind)} share (%)`), 'forest');
-  // (A kind with ages: its trees all of the Tree tab's age, or of several.)
-  if (hasAges(kind)) {
-    const mix = settings.forest.mix[kind];
-    const rows = [];
-    const show = () => rows.forEach((row) => row.show(mix.mixed));
-    watch(mixFolder.add(mix, 'mixed').name(`${kind} of several ages`), 'forest', { also: show });
-    rows.push(addRange(mixFolder, mix, 'ages', `${kindName(kind)} ages (years)`, RANGES['forest.mix.ages'], 'forest'));
-    rows.push(watch(mixFolder.add(mix, 'old', ...RANGES['forest.mix.old']).name(`${kind}: young to old`), 'forest'));
-    ageRows.push(show);
-    show();
+const woodPick = { wood: 'custom' };
+const woodRow = mixFolder.add(woodPick, 'wood', [...Object.keys(WOODS), 'custom']).name('a wood of').onChange((name) => {
+  if (name === 'custom') return showWood();
+  plantWood(settings.forest, name);
+  refreshPanel();
+  layMix();
+  if (settings.tab === 'forest') growForest();
+  remember();
+  note(`The mix is "${name}", set by cover. The kinds' shapes are as they were: for a closed wood, start a kind from "forest-grown".`, 9000);
+});
+function showWood() {
+  woodPick.wood = woodOf(settings.forest);
+  woodRow.updateDisplay();
+}
+watch(mixFolder.add(settings.forest, 'mixBy', CHOICES['forest.mixBy']).name('set the mix'), 'forest', { also: () => layMix() });
+const mixRows = new Map(); // (each kind's row)
+const mixTop = mixHead();
+mixFolder.$children.append(mixTop);
+const mixGroups = KIND_GROUPS.map(({ title, kinds }) => ({ heading: mixGroup(title), kinds }));
+for (const { heading, kinds } of mixGroups) {
+  mixFolder.$children.append(heading);
+  for (const kind of kinds) {
+    mixRows.set(kind, watch(new MixController(mixFolder, settings.forest.mix[kind], kindName(kind), RANGES['forest.mix.share'], { onName: () => pickKind(kind) }), 'forest', { also: () => showWood() }));
   }
 }
-watch(mixFolder.add(settings.forest, 'grouping', CHOICES['forest.grouping']).name('kinds grow'), 'forest', { also: () => standRow.show(settings.forest.grouping === 'in stands') });
+// (Each layer's own row: how much of the ground its crowns cover.)
+const layerRows = new Map(LAYERS.map((name) => [name, watch(new MixController(mixFolder, settings.forest.layers, `${name} covers`, RANGES[`forest.layers.${name}`], { property: name, layer: true }), 'forest', { also: () => showWood() })]));
+const groupingRow = watch(mixFolder.add(settings.forest, 'grouping', CHOICES['forest.grouping']).name('kinds grow'), 'forest', { also: () => standRow.show(settings.forest.grouping === 'in stands') });
+// The table laid out for how the mix is set: by count, the kinds under
+// their countries; by cover, under their layers. (The same rows, moved.)
+function layMix() {
+  const cover = settings.forest.mixBy === 'by cover';
+  const put = (element) => mixFolder.$children.insertBefore(element, groupingRow.domElement);
+  mixFolder.domElement.classList.toggle('by-cover', cover);
+  mixTop.says(cover ? 'share of its layer (%)' : 'share (%)');
+  for (const { heading } of mixGroups) heading.style.display = cover ? 'none' : '';
+  for (const [, row] of layerRows) row.show(cover);
+  if (cover) {
+    for (const [name, row] of layerRows) {
+      put(row.domElement);
+      for (const kind of KINDS) if (layerOf(kind) === name) put(mixRows.get(kind).domElement);
+    }
+  } else {
+    for (const { heading, kinds } of mixGroups) {
+      put(heading);
+      for (const kind of kinds) put(mixRows.get(kind).domElement);
+    }
+  }
+  // (By cover the seeds are worked out, not asked.)
+  densityRow.enable(!cover);
+  showWood();
+}
 const standRow = watch(mixFolder.add(settings.forest, 'standSize', ...range('forest.standSize')).name('stand size (m)'), 'forest');
 watch(mixFolder.add(settings.forest, 'variants', ...range('forest.variants')).name('variants a kind'), 'forest');
 addRange(mixFolder, settings.forest, 'size', 'size', range('forest.size'), 'forest');
@@ -1373,25 +1594,83 @@ watch(groundFolder.add(settings.terrain, 'size', ...range('terrain.size')).name(
 watch(groundFolder.add(settings.terrain, 'roughness', ...range('terrain.roughness')), 'forest');
 watch(groundFolder.add(settings.forest, 'maxSlope', ...range('forest.maxSlope')).name('steepest slope trees grow on (°)'), 'forest');
 
-// Both tabs: one kind's shape at a time, refilled when the kind changes. A
-// range is one row with two handles, least and most. (In the Forest tab,
-// the kind to change is chosen at its top.)
-const shapeFolder = gui.addFolder('shape').close();
-const shapeKind = shapeFolder.add(settings.tree, 'kind', KIND_OPTIONS).name('kind to change');
-shapeKind.onChange(() => {
-  fillShapeFolder();
-  refreshPanel();
-  dirty.tree = true;
-  remember();
-});
+// Both tabs, on the left of the screen: one kind's shape, in a panel of its
+// own. Which kind:
+//   - the selected tree's (a click on a tree selects it);
+//   - with none selected, in the Tree tab, the kind that tab shows;
+//   - in the Forest tab, the kind last selected or picked from the list at
+//     the panel's top. That choice is the panel's own: it is not a setting,
+//     and a link doesn't carry it.
+// Its sliders change every tree of the kind, in both tabs. A range is one
+// row with two handles, the kind's least and most; where one tree is looked
+// at (the selected tree, or the Tree tab's one tree), a red mark on each
+// range shows what that tree drew for itself (showMarks).
+const shapeFolder = kindGui;
+const kindPick = { kind: settings.tree.kind }; // (the Forest tab's)
+const kindShown = () => (shown === 'forest' ? kindPick.kind : selected?.tab === 'tree' ? selected.record.kind : settings.tree.kind);
+const shapeKind = shapeFolder.add(kindPick, 'kind', KIND_OPTIONS).name('kind');
+// The panel put on a kind: from the list at its top, or from the forest's
+// mix (a click on a kind's name there).
+function pickKind(kind) {
+  kindPick.kind = kind;
+  // (Another kind than the selected tree's: the tree is let go, or the panel would turn back to it when the forest is next planted.)
+  if (selected && selected.record.kind !== kind) select(null);
+  else showKind();
+}
+shapeKind.onChange(() => pickKind(kindPick.kind));
+const kindNameEl = document.getElementById('kind-name');
+const kindSays = document.getElementById('kind-says');
+let filled = null; // (the kind whose rows the panel holds)
+let forestRows = null; // (its rows that are only the forest's: shown in the Forest tab)
+const marks = new Map(); // (its rows that can mark one tree's value: by their setting)
+// The panel on the kind it should show: filled again if that changed, and
+// its marks either way.
+function showKind() {
+  if (kindShown() !== filled) fillShapeFolder();
+  else showMarks();
+}
+// The tree whose own values are marked: the selected one; or, in the Tree
+// tab with one tree shown, that tree.
+function markedTree() {
+  if (selected?.tab === shown) return { record: selected.record, group: shown === 'tree' ? garden : woods, picked: true };
+  const alone = shown === 'tree' && settings.tree.show !== 'grid' ? gardenSize?.records : null;
+  return alone?.length === 1 ? { record: alone[0], group: garden, picked: false } : null;
+}
+function showMarks() {
+  forestRows?.show(shown === 'forest');
+  for (const [kind, row] of mixRows) row.shown(kind === filled); // (the mix's table marks the kind shown here)
+  const tree = markedTree();
+  const drew = tree && tree.record.kind === filled ? drawnIn(tree.group.userData.species, tree.record) : null;
+  for (const [key, row] of marks) row.mark(drew?.[key] ?? null);
+  kindSays.classList.toggle('marked', Boolean(drew));
+  // (A forest's tree differs from its kind's handles: it has an age of its own (of several), it may have grown in a wood,
+  // and the forest's own "size" makes it a little bigger or smaller. Each is said, since a mark can then lie outside the
+  // handles; and the handles are said to be the kind as the Tree tab grows it.)
+  const record = tree?.record ?? {};
+  const size = record.size ?? 1;
+  const shape = settings.shapes[filled] ?? {};
+  const otherAge = record.age !== undefined && shape.age !== undefined && record.age !== shape.age;
+  const sized = Math.abs(size - 1) > 0.005;
+  const who = [record.age !== undefined ? `${record.age} years old` : '', record.wood ? 'grown in a wood' : '', selected ? `${selected.height.toFixed(1)} m tall` : ''].filter(Boolean).join(', ');
+  const why = otherAge || record.wood || sized
+    ? ` The handles are the ${kindName(filled)} as the Tree tab grows it${shape.age !== undefined ? ` (${shape.age} years)` : ''}, so its marks can fall outside them${sized ? `; the forest's "size" makes it ${size.toFixed(2)} times as big` : ''}.`
+    : '';
+  if (drew) kindSays.textContent = tree.picked ? `The selected tree: ${who}.${why} The sliders change every ${kindName(filled)}.` : 'This tree\'s own values.';
+  else if (tree?.record.kind === filled) kindSays.textContent = 'Selected. This kind\'s trees keep no values of their own to mark.';
+  else kindSays.textContent = shown === 'forest' || settings.tree.show === 'grid' ? 'Click a tree to see where it falls in its kind\'s ranges.' : '';
+}
 const pick = { startFrom: 'workshop' }; // (the "start from" row's value)
 let presetRow = null;
+const crownPick = { form: 'custom' }; // (the "crown form" row's value, for a kind whose crown has forms)
+let crownRow = null;
 const showPreset = () => {
-  pick.startFrom = presetOf(settings.tree.kind, settings.shapes[settings.tree.kind]);
+  pick.startFrom = presetOf(filled, settings.shapes[filled]);
   presetRow?.updateDisplay();
+  crownPick.form = crownOf(filled, settings.shapes[filled]) ?? 'custom';
+  crownRow?.updateDisplay();
 };
 function fillShapeFolder() {
-  const kind = settings.tree.kind;
+  const kind = kindShown();
   // (Which sections are folded shut, and which of their own panels are open
   // (those start shut), before they go: the new ones start as these were.)
   for (const section of shapeFolder.folders) {
@@ -1400,7 +1679,13 @@ function fillShapeFolder() {
   }
   for (const child of [...shapeFolder.children]) if (child !== shapeKind) child.destroy();
   outlineRow = null;
-  shapeFolder.title(`${kindName(kind)} shape`);
+  crownRow = null;
+  marks.clear();
+  filled = kind;
+  shapeFolder.title(kindName(kind));
+  kindNameEl.textContent = kindName(kind);
+  if (kindPick.kind !== kind) kindPick.kind = kind; // (the list at the top says the same)
+  shapeKind.updateDisplay();
   const shape = settings.shapes[kind];
   // Start from a ready-made shape (src/presets.js); "custom" once a slider moves.
   pick.startFrom = presetOf(kind, shape);
@@ -1416,7 +1701,7 @@ function fillShapeFolder() {
     dirty.tree = dirty.forest = true;
     regrow({ frame: settings.tab === 'tree' });
     remember();
-    note(`The ${kind} starts from "${name}".`);
+    note(`The ${kindName(kind)} starts from "${name}".`);
   });
   // The sliders in sections, by the part of the tree they shape, under
   // plain names (src/sections.js). A section folded shut stays shut when
@@ -1429,6 +1714,21 @@ function fillShapeFolder() {
     if (!sliders.length) continue;
     const section = tint(shapeFolder.addFolder(title), SECTION_TINTS[title]);
     if (shut.has(title)) section.close();
+    // A kind whose crown can take several forms (src/kinds.js) lists them first among its crown's rows. A form sets
+    // a few of the rows below it together, in plain sight; "custom" once one of them is moved.
+    if (title === 'crown' && KIND_CROWNS[kind]) {
+      crownPick.form = crownOf(kind, shape);
+      crownRow = section.add(crownPick, 'form', [...Object.keys(KIND_CROWNS[kind]), 'custom']).name('crown form').onChange((name) => {
+        if (name === 'custom') return;
+        Object.assign(shape, KIND_CROWNS[kind][name]);
+        refreshPanel();
+        showPreset();
+        dirty.tree = dirty.forest = true;
+        regrow({ frame: false });
+        remember();
+        note(`The ${kindName(kind)}'s crown: ${name}.`);
+      });
+    }
     const panels = new Map(); // (the section's own panels, by title)
     for (const { key, name, panel } of sliders) {
       if (panel && !panels.has(panel)) {
@@ -1444,6 +1744,7 @@ function fillShapeFolder() {
       const choices = KIND_CHOICES[kind]?.[key];
       const limits = limitsFor(key, DEFAULT_SHAPES[kind][key] ?? shape[key], kind);
       const row = choices ? into.add(shape, key, choices) : sliderKind(shape[key]) === 'range' ? new RangeController(into, shape, key, ...limits) : into.add(shape, key, ...limits);
+      if (row instanceof RangeController) marks.set(key, row);
       // (The age moves the other rows, in plain sight: src/age.js.)
       const aged = key === 'age' && hasAges(kind);
       watch(row.name(name), 'both', { also: () => {
@@ -1457,15 +1758,39 @@ function fillShapeFolder() {
     }
   }
   if (skipped.length) shapeFolder.add({ skipped: skipped.join(', ') }, 'skipped').name('no slider yet').disable();
+  // The kind's two greens (src/colors.js), folded shut until they're wanted.
+  const greens = tint(shapeFolder.addFolder('greens'), 'leaf');
+  if (shut.has('greens')) greens.close();
+  recolored(greens.addColor(settings.colors[kind], 'dark').name('darkest'));
+  recolored(greens.addColor(settings.colors[kind], 'light').name('lightest'));
+  // The kind in the forest (shown in the Forest tab): its trees all of the
+  // Tree tab's age or of several (src/age.js), and where it grows
+  // (src/site.js), which is the kind's own and has no slider.
+  forestRows = tint(shapeFolder.addFolder('in the forest'), 'wood');
+  if (shut.has('in the forest')) forestRows.close();
+  if (hasAges(kind)) {
+    const mix = settings.forest.mix[kind];
+    const aged = [];
+    const show = () => aged.forEach((row) => row.show(mix.mixed));
+    watch(forestRows.add(mix, 'mixed').name('of several ages'), 'forest', { also: show });
+    aged.push(addRange(forestRows, mix, 'ages', 'ages (years)', RANGES['forest.mix.ages'], 'forest'));
+    aged.push(watch(forestRows.add(mix, 'old', ...RANGES['forest.mix.old']).name('young to old'), 'forest'));
+    show();
+  }
+  const said = document.createElement('p');
+  said.className = 'said';
+  said.textContent = siteSays(siteOf(kind));
+  forestRows.$children.append(said);
+  showMarks();
 }
 let outlineRow = null; // (the drawing of the crown's outline, while the kind shown has one)
-const shut = new Set(); // (the shape's sections folded shut)
+const shut = new Set(['greens']); // (the kind's sections folded shut: its greens to start with)
 const opened = new Set(); // (and their own panels unfolded: "section/panel")
 
 // Both tabs: the light. The time of day and where the noon sun stands
 // (src/light.js): the sun's angle and colour, the sky, its light in the
-// shade, the fog's colour; how much sun comes through the leaves
-// (src/leafLight.js), the light shafts and mist (src/lightShafts.js), the
+// shade, the far veil's colour; how much sun comes through the leaves
+// (src/leafLight.js), the light shafts, mist and fog (src/lightShafts.js), the
 // gaps in the crowns' shade (src/crownGaps.js), how much of the sky's light
 // the trees keep off what's under them (src/skyShade.js), and how far the
 // eye adjusts to the view (src/eye.js).
@@ -1485,7 +1810,7 @@ lightFolder.add(settings.light, 'shafts', ...range('light.shafts')).name('light 
   applyShafts();
   remember();
 });
-lightFolder.add(settings.light, 'mist', ...range('light.mist')).name('mist').onChange(() => {
+lightFolder.add(settings.light, 'mist', ...range('light.mist')).name('mist and fog').onChange(() => {
   applyShafts();
   remember();
 });
@@ -1500,22 +1825,44 @@ lightFolder.add(settings.light, 'shade', ...range('light.shade')).name('shade un
 });
 lightFolder.add(settings.light, 'eye', ...range('light.eye')).name('eye adjusts to the view').onChange(remember);
 
-// Both tabs: colour. Autumn, and each kind's two greens. Nothing regrows:
-// the trees take their new colours where they stand.
-const colourFolder = gui.addFolder('colour').close();
-const recolored = (c) => c.onChange(() => {
+// Both tabs: the season and colour. The season is a place to start from
+// (src/season.js): it sets how much of their leaves the trees carry (they
+// are grown again that way), how new the leaves are, and how far they have
+// turned. Then autumn's colours, and each kind's two greens: for those
+// nothing regrows, the trees take their new colours where they stand.
+const colourFolder = gui.addFolder('season and colour').close();
+const seasonPick = { season: 'custom' };
+const seasonRow = colourFolder.add(seasonPick, 'season', [...Object.keys(SEASONS), 'custom']).name('season').onChange((name) => {
+  if (!SEASONS[name]) return showSeason();
+  assign(settings, seasonChanges(name));
+  refreshPanel();
+  dirty.tree = dirty.forest = true;
+  regrow();
   recolorAll();
   remember();
 });
-recolored(colourFolder.add(settings.autumn, 'amount', ...range('autumn.amount')).name('autumn'));
+function showSeason() {
+  seasonPick.season = seasonOf(settings);
+  seasonRow.updateDisplay();
+}
+const recolored = (c) => c.onChange(() => {
+  recolorAll();
+  showSeason();
+  remember();
+});
+watch(colourFolder.add(settings.season, 'leaves', ...range('season.leaves')).name('leaves on the trees'), 'both', { also: showSeason });
+recolored(colourFolder.add(settings.season, 'fresh', ...range('season.fresh')).name('new leaves'));
+// (Autumn also decides which kinds are ahead with their leaves, src/season.js: with fewer than all their leaves
+// on, the trees are grown again when the row is let go.)
+recolored(colourFolder.add(settings.autumn, 'amount', ...range('autumn.amount')).name('autumn')).onFinishChange(() => {
+  if (settings.season.leaves >= 1) return;
+  dirty.tree = dirty.forest = true;
+  regrow();
+});
 recolored(colourFolder.add(settings.autumn, 'palette', CHOICES['autumn.palette']).name('autumn colours'));
 recolored(colourFolder.add(settings.autumn, 'spread', ...range('autumn.spread')).name('trees turn unevenly'));
 recolored(colourFolder.add(settings.autumn, 'evergreens').name('needles turn too'));
-const greensFolder = colourFolder.addFolder('greens').close();
-for (const kind of KINDS) {
-  recolored(greensFolder.addColor(settings.colors[kind], 'dark').name(`${kindName(kind)}: dark`));
-  recolored(greensFolder.addColor(settings.colors[kind], 'light').name(`${kindName(kind)}: light`));
-}
+// (Each kind's two greens are in its own panel, on the left: fillShapeFolder.)
 
 // Both tabs: the sway, and the wind (its rows are the workshop's own, put
 // in by src/windView.js each time the rig binds).
@@ -1553,6 +1900,11 @@ viewFolder.add(settings.view, 'spin').name('turn slowly').onChange((on) => {
   controls.autoRotate = on;
   remember();
 });
+viewFolder.add(settings.view, 'turnSpeed', ...range('view.turnSpeed')).name('turn speed (°/s)').onChange((v) => {
+  controls.autoRotateSpeed = turnRate(v);
+  remember();
+});
+viewFolder.add({ centre: () => centreView() }, 'centre').name('centre on the selected tree');
 viewFolder.add({ frame: () => frameView() }, 'frame').name('frame the view');
 
 // Both tabs: save, load, share, export.
@@ -1579,13 +1931,13 @@ fileFolder.add({
 // Every row's tooltip (src/tips.js), worked out when it's shown.
 const owners = new Map([
   [settings.tree, 'tree'], [settings.forest, 'forest'], [settings.terrain, 'terrain'], [settings.sway, 'sway'],
-  [settings.wind, 'wind'], [settings.view, 'view'], [rig.clock, 'clock'], [shot, 'shot'], [model, 'model'],
-  [ui, 'ui'], [forestReadout, 'readout'], [settings.autumn, 'autumn'], [settings.light, 'light'],
+  [settings.wind, 'wind'], [settings.view, 'view'], [settings.season, 'season'], [settings.forest.rules, 'forest.rules'], [rig.clock, 'clock'], [shot, 'shot'], [model, 'model'],
+  [ui, 'ui'], [forestReadout, 'readout'], [settings.autumn, 'autumn'], [settings.light, 'light'], [settings.forest.layers, 'forest.layers'],
   ...KINDS.map((kind) => [settings.colors[kind], `colors:${kind}`]),
   ...KINDS.map((kind) => [settings.forest.mix[kind], `mix:${kind}`]),
 ]);
 function tipOf(row) {
-  const c = gui.controllersRecursive().find((one) => one.domElement === row);
+  const c = rows().find((one) => one.domElement === row);
   if (!c) return null;
   if (c === shapeKind) return tip('shape.kind');
   if (c === outlineRow) return tip('shape.outline');
@@ -1593,13 +1945,17 @@ function tipOf(row) {
   const kind = KINDS.find((k) => settings.shapes[k] === c.object);
   if (kind) return shapeTip(kind, c.property);
   if (c.object === pick) return tip('preset.startFrom');
+  if (c.object === crownPick) return tip('crown.form');
   if (c.object === scenePick) return tip('scene.startFrom');
+  if (c.object === woodPick) return tip('wood.startFrom');
+  if (c.object === seasonPick) return tip('season.time');
   const owner = owners.get(c.object);
-  if (owner?.startsWith('mix:')) return tip(`mix.${c.property}`, kindName(owner.slice(4)));
+  if (owner?.startsWith('mix:')) return tip(c.property === 'share' && settings.forest.mixBy === 'by cover' ? 'mix.cover' : `mix.${c.property}`, kindName(owner.slice(4)));
   if (owner?.startsWith('colors:')) return tip(`colors.${c.property}`, kindName(owner.slice(7)));
   return tip(owner ? `${owner}.${c.property}` : `action.${c.property}`, settings.tree.kind);
 }
 attachTooltips(document.getElementById('panel'), tipOf);
+attachTooltips(document.getElementById('kind'), tipOf);
 
 // P pauses the clock. Walking among the trees, the arrow keys and W A S D
 // walk, Shift runs and Space jumps (walk()).
@@ -1608,6 +1964,11 @@ addEventListener('keydown', (e) => {
   if (e.target.closest?.('dialog')) return; // (a card is open over the page: its keys are its own)
   if (e.code === 'KeyP' && !e.repeat) rig.clock.paused = !rig.clock.paused;
   if (e.code === 'KeyH' && !e.repeat) foldBoth();
+  if (e.code === 'KeyC' && !e.repeat) centreView();
+  if (e.code === 'Escape' && selected) {
+    select(null);
+    note('Nothing selected.');
+  }
   if (standing && e.code === 'Space') {
     if (!e.repeat) jumpAsked = true;
     e.preventDefault(); // (it would scroll the panel, or press the button last clicked)
@@ -1639,7 +2000,9 @@ document.getElementById('load-file').addEventListener('change', async (e) => {
   e.target.value = '';
   if (!file) return;
   try {
-    const { settings: loaded, notes } = normalize(JSON.parse(await file.text()));
+    const read = JSON.parse(await file.text());
+    if (!looksLikeSettings(read)) throw new Error('not settings');
+    const { settings: loaded, notes } = normalize(read);
     applySettings(loaded, notes.length ? `Loaded ${file.name}, but ${notes.slice(0, 3).join('; ')}${notes.length > 3 ? ` (and ${notes.length - 3} more)` : ''}.` : `Loaded ${file.name}.`);
   } catch {
     note(`${file.name} isn't a TreeLab settings file.`);
@@ -1660,23 +2023,27 @@ async function copyLink() {
 // objects), everything regrown.
 function applySettings(loaded, message) {
   assign(settings, loaded);
+  kindPick.kind = settings.tree.kind;
   refreshPanel();
   fillShapeFolder();
   showGridRows();
   nameRadius();
   showPatternRows();
   showPatchRows();
-  for (const show of ageRows) show();
   standRow.show(settings.forest.grouping === 'in stands');
+  layMix();
   grid && (grid.visible = settings.view.grid);
   person.visible = settings.view.person;
   controls.autoRotate = settings.view.spin;
+  controls.autoRotateSpeed = turnRate(settings.view.turnSpeed);
   dirty.tree = dirty.forest = true;
   views.tree = views.forest = null;
   tintGround();
   applyLight();
   showTab(settings.tab, { frame: true, keepView: false });
   showScene();
+  showSeason();
+  if (standing) document.activeElement?.blur?.(); // (the list a walking view was just picked from would take the arrow keys)
   if (message) note(standing ? `${message} You walk among the trees, facing the sun. ${HOW_TO_WALK}` : message, standing ? 12000 : 8000);
 }
 
@@ -1728,19 +2095,98 @@ async function downloadModel() {
   }
 }
 
+// --- Selecting: a click picks a tree; the left panel shows its kind; "centre" turns the view round it ---
+
+// (src/select.js. The selection isn't a setting: it isn't saved, and a link
+// doesn't carry it. Shift and a click selects too, as it first did.)
+let selected = null; // { tab, record, height }
+let ring = null;     // the ring on the ground round its foot
+function dropRing() {
+  if (!ring) return;
+  ring.parent?.remove(ring);
+  ring.geometry.dispose();
+  ring.material.dispose();
+  ring = null;
+}
+// kept: the same tree again after a planting (the left panel stays on the
+// kind it shows); otherwise the panel turns to the tree's kind.
+function select(record, tab = shown, { kept = false } = {}) {
+  dropRing();
+  selected = null;
+  if (record) {
+    const group = tab === 'tree' ? garden : woods;
+    selected = { tab, record, height: heightIn(group.userData.species, record) };
+    const heightAt = tab === 'forest' ? (x, z) => terrain.heightAt(x, z) : () => 0;
+    const points = ringPoints({ x: record.x, z: record.z, radius: ringRadius(record.crown), heightAt }).map((p) => new THREE.Vector3(...p));
+    ring = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95 }));
+    (tab === 'tree' ? treeStage : forestStage).add(ring);
+    if (!kept && tab === 'forest') kindPick.kind = record.kind;
+  }
+  if (tab === shown) showKind();
+}
+// (The trees planted again, a slider moved: the selection stays on the tree standing where it stood.)
+function keepSelection(tab, records) {
+  if (selected?.tab !== tab) return;
+  select(sameTree(records, selected.record), tab, { kept: true });
+}
+const selectedSays = () => `the ${kindName(selected.record.kind)}, ${selected.height.toFixed(1)} m tall`;
+
+let pressed = null;
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  pressed = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+});
+// (A click, not a drag: a drag turns the view. A click on no tree lets the selected one go.)
+renderer.domElement.addEventListener('pointerup', (e) => {
+  const was = pressed;
+  pressed = null;
+  if (!isClick(was, { x: e.clientX, y: e.clientY })) return;
+  const record = treeAt(e);
+  if (!record && !selected) return;
+  select(record);
+  if (selected) note(`Selected: ${selectedSays()}. Its kind's settings are on the left. C turns the view round it, Esc lets it go.`, 8000);
+  else note('Nothing selected.', 2500);
+});
+
+// The view slid so that the selected tree is at the middle of the screen,
+// from the same angle and as far away; with none selected, the middle of
+// what's shown. The view turns round that point from then on.
+const _slide = new THREE.Vector3();
+function centreView() {
+  if (standing) {
+    note('Walking among the trees, the view stays with the figure. Turn "walk among the trees" off to centre it on a tree.', 7000);
+    return;
+  }
+  const on = selected?.tab === shown ? selected : null;
+  if (on) _slide.set(...focusOf({ x: on.record.x, y: on.record.y ?? 0, z: on.record.z, height: on.height }));
+  else if (shown === 'tree') _slide.set(0, gardenSize.tallest * 0.45, 0);
+  else _slide.set(0, terrain.heightAt(0, 0) + 3, 0);
+  _slide.sub(controls.target);
+  controls.target.add(_slide);
+  camera.position.add(_slide);
+  controls.update();
+  fitVeil();
+  note(on ? `Centred on ${selectedSays()}. The view turns round it now.` : 'Centred on the middle. A click on a tree selects it; then this centres on that tree.', 7000);
+}
+
 // --- Picking: a double-click on a tree shows it alone ---------------------------------
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
-renderer.domElement.addEventListener('dblclick', (e) => {
+// The tree under the pointer (its record), or none.
+function treeAt(e) {
   pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
   const group = settings.tab === 'tree' ? garden : woods;
   const hit = raycaster.intersectObjects(group.children, false)[0];
-  const record = hit?.object.userData.trees?.[hit.instanceId];
+  return hit?.object.userData.trees?.[hit.instanceId] ?? null;
+}
+renderer.domElement.addEventListener('dblclick', (e) => {
+  if (e.shiftKey) return; // (with Shift held, two clicks select and no more)
+  const record = treeAt(e);
   if (!record) return;
   const from = settings.tab;
   if (from === 'tree' && settings.tree.show !== 'grid') return;
+  if (record.seed !== settings.tree.seed) dirty.forest = true; // (the forest grows from the Tree tab's seed)
   Object.assign(settings.tree, { kind: record.kind, seed: record.seed, variant: record.variant, show: 'one tree' });
   fillShapeFolder();
   refreshPanel();
@@ -1749,10 +2195,19 @@ renderer.domElement.addEventListener('dblclick', (e) => {
   if (settings.tab === 'tree') growTree({ frame: true });
   else showTab('tree', { frame: true });
   remember();
-  note(from === 'tree' ? `The ${record.kind}, seed ${record.seed}, variant ${record.variant}. "show: grid" goes back to the grid.` : `The ${record.kind}, seed ${record.seed}, variant ${record.variant}, from the forest.`, 8000);
+  note(from === 'tree' ? `The ${kindName(record.kind)}, seed ${record.seed}, variant ${record.variant}. "show: grid" goes back to the grid.` : `The ${kindName(record.kind)}, seed ${record.seed}, variant ${record.variant}, from the forest.`, 8000);
 });
 
 // --- Go -----------------------------------------------------------------------------
+
+// Another link pasted into the address of a page already open: only what follows the # changes, so the page
+// doesn't load again. It opens the link.
+addEventListener('hashchange', () => {
+  const hash = location.hash.slice(1);
+  if (!hash.startsWith('v=') && !hash.startsWith('s=')) return;
+  const opened = startingSettings();
+  if (opened) applySettings(opened.settings, opened.notes.length ? `Opened the link, but ${opened.notes.slice(0, 3).join('; ')}.` : 'Opened the link.');
+});
 
 addEventListener('resize', () => {
   camera.aspect = aspect();
@@ -1762,6 +2217,7 @@ addEventListener('resize', () => {
 
 const start = startingSettings();
 if (start) assign(settings, start.settings);
+kindPick.kind = settings.tree.kind;
 tintGround();
 applyLight();
 fillShapeFolder();
@@ -1770,18 +2226,23 @@ nameRadius();
 showPatternRows();
 showPatchRows();
 standRow.show(settings.forest.grouping === 'in stands');
+layMix();
 person.visible = settings.view.person;
 controls.autoRotate = settings.view.spin;
+controls.autoRotateSpeed = turnRate(settings.view.turnSpeed);
 refreshPanel();
 showScene();
+showSeason();
 setTerrain();
 growTree();
 showTab(settings.tab, { frame: true });
 if (start?.notes.length) note(`From ${start.from}: ${start.notes.slice(0, 2).join('; ')}.`, 8000);
-// (The panel's own folders, each in its colour. The shape's is tinted by its
-// first word-free name: its title changes with the kind.)
-for (const folder of gui.folders) tint(folder, folder === shapeFolder ? TINTS.shape : TINTS[folder._title]);
-if (innerWidth > 0 && innerWidth < 700) gui.close();
+// (The panel's own folders, each in its colour.)
+for (const folder of gui.folders) tint(folder, TINTS[folder._title]);
+if (innerWidth > 0 && innerWidth < 700) {
+  gui.close();
+  kindGui.close();
+}
 
 // The welcome card, on a first visit (src/welcome.js): what TreeLab is and
 // how to look round. Not for someone a link sent to a view, nor for a
@@ -1822,16 +2283,16 @@ const frame = (now) => {
   runDay(dt);
   walk(Math.min(dt, 0.1));
   poseFigure(Math.min(dt, 0.1));
-  controls.update();
+  controls.update(Math.min(dt, 0.1)); // (by the clock: "turn slowly" turns so many degrees a second, whatever the screen's rate)
   keepAboveGround();
-  fitFog();
+  fitVeil();
   if (eye.seen) adapt(dt);
   else settleEye(); // (the first frame)
-  fitFogColor();
+  fitVeilColor();
   render();
   eye.look();
 };
 renderer.setAnimationLoop(frame);
 
 // For poking at from the browser's console.
-window.treelab = { scene, camera, controls, renderer, render, frame, eyeAdapts: ADAPTS, get standing() { return standing; }, walker, pad, get body() { return body; }, shafts, shade, skyShade, eye, settleEye, settings, garden, woods, rig, regrow, showTab, applySettings, frameView, get terrain() { return terrain; }, get stats() { return stats; } };
+window.treelab = { scene, camera, controls, renderer, render, frame, eyeAdapts: ADAPTS, get standing() { return standing; }, walker, pad, get body() { return body; }, shafts, shade, skyShade, eye, settleEye, settings, garden, woods, rig, regrow, showTab, applySettings, frameView, centreView, select, get selected() { return selected; }, get kindShown() { return filled; }, get terrain() { return terrain; }, get stats() { return stats; } };

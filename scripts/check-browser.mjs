@@ -114,8 +114,11 @@ try {
   // Everything that goes wrong in the page, as it happens.
   let wrong = [];
   talk.hear(({ method, params }) => {
+    const said = (p) => p.args.map((a) => a.value ?? a.description ?? '').join(' ');
     if (method === 'Runtime.exceptionThrown') wrong.push(`error: ${params.exceptionDetails.exception?.description ?? params.exceptionDetails.text}`);
     if (method === 'Runtime.consoleAPICalled' && params.type === 'error') wrong.push(`error: ${params.args.map((a) => a.value ?? a.description ?? '').join(' ')}`);
+    // (What the shader compiler warns of, three.js says as a warning: a shader that compiles with a warning is a fault here.)
+    if (method === 'Runtime.consoleAPICalled' && params.type === 'warning' && /WebGLProgram|WebGLShader|warning X\d+/.test(said(params))) wrong.push(`shader warning: ${said(params).replace(/\s+/g, ' ').slice(0, 200)}`);
     if (method === 'Log.entryAdded' && (params.entry.level === 'error' || /WebGL|GL_|shader/i.test(params.entry.text))) wrong.push(`${params.entry.source}: ${params.entry.text}`);
   });
   await page('Runtime.enable');

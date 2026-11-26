@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { workNow } from './clock.js';
 import * as THREE from 'three';
 import { DEFAULT_WIND } from '@workshop/wind.js';
 import { OAK_LIMITS, OAK_SHAPE, buildOak, layoutOak, partOf } from '../src/oak/oak.js';
@@ -23,8 +24,8 @@ function sound(tree, label, shape = OAK_SHAPE) {
   const n = triangles(tree.wood) + triangles(tree.foliage);
   // (And a trunk thicker than any oak's has thick wood all the way out.)
   // (26,000, where it was 22,000 when the leaves were balls: as masses a big oak's are a few thousand more.)
-  // (And clusters far taller than they're wide are more surface to draw.)
-  const most = 26000 * tree.layout.oak.big ** 2 * Math.max(1, shape.girth[1] / 1.5) * Math.max(1, shape.squash / 1.8) * Math.max(1, (0.9 / shape.coarse) ** 2); // (and finer facets are more of them: nine times as many at a third the size)
+  // (And clusters far taller than they're wide are more surface to draw; so are clusters drawn wider than they grew.)
+  const most = 26000 * tree.layout.oak.big ** 2 * Math.max(1, shape.girth[1] / 1.5) * Math.max(1, shape.squash / 1.8) * Math.max(1, (shape.clumpWide ?? 1) ** 2) * Math.max(1, (0.9 / shape.coarse) ** 2); // (and finer facets are more of them: nine times as many at a third the size)
   assert.ok(n > 200 && n < most, `${label}: ${n} triangles (at most ${Math.round(most)})`);
   const [lo, hi] = shape.height;
   assert.ok(tree.height > lo * 0.7 && tree.height < hi * 1.3 + 1, `${label}: ${tree.height.toFixed(1)} m tall for ${lo}–${hi}`);
@@ -34,13 +35,13 @@ function sound(tree, label, shape = OAK_SHAPE) {
 test('an oak grows at its real size, wider than tall, in good time', () => {
   const took = [];
   for (const seed of SEEDS) {
-    const start = performance.now();
+    const start = workNow();
     const tree = buildOak(seed, OAK_SHAPE);
-    took.push(performance.now() - start);
+    took.push(workNow() - start);
     sound(tree, `seed ${seed}`);
     assert.ok(tree.reach * 2 > tree.height * 0.9, `seed ${seed}: ${(tree.reach * 2).toFixed(1)} m wide, ${tree.height.toFixed(1)} m tall`);
   }
-  // (Each takes 50 to 120 ms alone. The tests run side by side, and one may be held up, so: most of them well
+  // (Each takes 50 to 180 ms alone, by the processor's own time: ./clock.js. Still: most of them well
   // within the time, and none absurdly long.)
   const sorted = [...took].sort((a, b) => a - b);
   assert.ok(sorted[Math.floor(sorted.length / 2)] < 400 && sorted.at(-1) < 2500, `an oak took ${took.map((ms) => ms.toFixed(0)).join(', ')} ms`);
@@ -262,4 +263,22 @@ test('twigs that stopped growing long ago are bare: few clusters sit low and dee
   }
   assert.ok(stopped / SEEDS.length > 15, `only ${(stopped / SEEDS.length).toFixed(0)} bare twigs a tree`);
   assert.ok(lowInside / all < 0.09, `${Math.round((100 * lowInside) / all)}% of the clusters sit low and inside`);
+});
+
+test('a cluster of leaves sits on its twig in every season: none hangs in the air as its leaves fall', async () => {
+  const { DEFAULT_SHAPES, growKind } = await import('../src/kinds.js');
+  // (Inside the leaves: in the cluster as drawn, and above the hollow under it, which ends them a third of the way down.)
+  const among = (p, c) => p[1] > c.center[1] - (c.radius * c.squash) / 3 && ((p[0] - c.center[0]) / c.radius) ** 2 + ((p[1] - c.center[1]) / (c.radius * c.squash)) ** 2 + ((p[2] - c.center[2]) / c.radius) ** 2 <= 1;
+  const held = (c, segments) => segments.some((s) => [0, 0.25, 0.5, 0.75, 1].some((t) => among([0, 1, 2].map((k) => s.from[k] + (s.to[k] - s.from[k]) * t), c)));
+  for (const kind of ['oak', 'beech', 'linden']) {
+    for (const leaves of [1, 0.5, 0.25]) {
+      let all = 0, loose = 0;
+      for (const seed of [1, 3, 7]) {
+        const tree = growKind(kind, seed, 0, { ...DEFAULT_SHAPES[kind], leaves });
+        for (const c of tree.layout.clumps) { all++; if (!held(c, tree.layout.segments)) loose++; }
+      }
+      // (It was a fifth and more of an oak's clusters in late autumn, before 25 November 2026.)
+      assert.ok(loose <= Math.max(2, all * 0.04), `${kind} at ${leaves} of its leaves: ${loose} of ${all} clusters hold no twig`);
+    }
+  }
 });

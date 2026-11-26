@@ -11,6 +11,13 @@ import { shadeCrown } from './crownShade.js';
 // The foliage's greens per kind, least and most tinted (src/trees.js).
 export const GREENS = {
   oak: [0x4a6a2a, 0x6c8c3a],
+  beech: [0x3f6b2e, 0x629440],        // a clearer green than the oak's olive
+  hawthorn: [0x3c5c26, 0x587833],     // dark
+  hazel: [0x4f7a2e, 0x71963a],        // lighter than an oak's, soft
+  holly: [0x1f4024, 0x325a30],        // very dark, glossy
+  ash: [0x4a7232, 0x6e9844],          // a fresh mid green
+  birch: [0x5a8a36, 0x86ae4a],        // light
+  linden: [0x3d6a2c, 0x5c8a3a],       // dark, a little bluer than an oak's
   fir: [0x2a5034, 0x426a3c],
   pine: [0x23402f, 0x355238],
   broadleaf: [0x58763a, 0x86963f],

@@ -31,7 +31,11 @@ import { NOISE, USUAL_PATTERN, bendOf, layersOf, patternFrom } from './leafNoise
 // - the clusters of one big limb are one field, those of another another:
 //   each limb bobs on its own in the wind (the sway reads the limb from
 //   every corner), and a real bough carries its own mass, with sky between
-//   it and the next.
+//   it and the next. Unless the kind asks for its limbs' leaves to run
+//   together too ("across"): then the whole crown's clusters are one
+//   field, and a mass can lie over several limbs. Each of its corners then
+//   moves with the limb of the cluster that is strongest there, so the
+//   limbs still bob each on its own, and the mass gives between them.
 //
 // Noise (0 to 1, and past it): the lumps are the base, and noise shapes
 // them (./leafNoise.js: what its pattern is like can be chosen). A slow
@@ -179,11 +183,12 @@ function chanceOf(own, seed) {
 // billow }: ./leafNoise.js; the usual one if none is given); merge: how
 // many of the clusters near enough to run together do (1: all, 0: none);
 // seed: the tree's (for the noise, and for which merge); level: how far
-// the clusters' leaves reach toward each other (see USUAL_LEVEL).
-export function massGeometry(clumps, { cell = 0.9, rough = 0.25, noise = 0, merge = 1, seed = 1, pattern = USUAL_PATTERN, level = USUAL_LEVEL } = {}) {
+// the clusters' leaves reach toward each other (see USUAL_LEVEL); across:
+// whether the leaves of different limbs run together too.
+export function massGeometry(clumps, { cell = 0.9, rough = 0.25, noise = 0, merge = 1, seed = 1, pattern = USUAL_PATTERN, level = USUAL_LEVEL, across = false } = {}) {
   const out = { position: [], color: [], branch: [] };
   const whole = patternFrom(pattern);
-  for (const limb of byLimb(clumps)) {
+  for (const limb of across ? [clumps] : byLimb(clumps)) {
     for (const group of groupsOf(limb, { merge, seed, noise, pattern: whole, level })) massInto(out, group, cell, rough, Math.max(0, noise), seed, whole, level);
   }
   const g = new THREE.BufferGeometry();
@@ -207,7 +212,6 @@ function massInto(out, clumps, cell, rough, noise, seed, pattern, LEVEL = USUAL_
     const lumps = lumpsOf(clump);
     return { clump, full: lumps.filter((lump) => lump.weight > 0), hollow: lumps.find((lump) => lump.weight < 0) };
   });
-  const { phase, heading } = clumps[0].limb;
 
   // The grid: round all the lumps and a cell more, its corners on whole
   // cells of the tree's space (so the same leaves give the same facets
@@ -232,6 +236,8 @@ function massInto(out, clumps, cell, rough, noise, seed, pattern, LEVEL = USUAL_
   const at = (i, j, k) => (k * ny + j) * nx + i;
   const field = new Float32Array(nx * ny * nz), weight = new Float32Array(nx * ny * nz);
   const reach = new Float32Array(nx * ny * nz), shade = new Float32Array(nx * ny * nz);
+  // (Which cluster is strongest at each corner of the grid, and how strong: the surface there moves with its limb.)
+  const most = new Float32Array(nx * ny * nz), whose = new Int32Array(nx * ny * nz);
 
   // The noise's bends: for every corner of the grid, the place the lumps
   // are asked about in its stead.
@@ -251,7 +257,7 @@ function massInto(out, clumps, cell, rough, noise, seed, pattern, LEVEL = USUAL_
 
   // Each cluster's own field (its lumps, less its hollow, never less than
   // nothing), added to the limb's.
-  for (const { clump, full, hollow } of all) {
+  for (const [which, { clump, full, hollow }] of all.entries()) {
     const a = [Infinity, Infinity, Infinity], b = [-Infinity, -Infinity, -Infinity];
     for (const lump of full) {
       const far = boxOf(lump);
@@ -276,6 +282,7 @@ function massInto(out, clumps, cell, rough, noise, seed, pattern, LEVEL = USUAL_
       weight[p] += here;
       reach[p] += here * clump.limb.reach1;
       shade[p] += here * clump.shade;
+      if (here > most[p]) { most[p] = here; whose[p] = which; }
     }
   }
 
@@ -300,7 +307,7 @@ function massInto(out, clumps, cell, rough, noise, seed, pattern, LEVEL = USUAL_
   const EDGES = [[0, 1], [2, 3], [4, 5], [6, 7], [0, 2], [1, 3], [4, 6], [5, 7], [0, 4], [1, 5], [2, 6], [3, 7]];
   const cx = nx - 1, cy = ny - 1, cz = nz - 1;
   const corner = new Int32Array(cx * cy * cz).fill(-1);
-  const corners = []; // [x, y, z, reach, shade] each
+  const corners = []; // [x, y, z, reach, shade, limb] each
   const cellAt = (i, j, k) => (k * cy + j) * cx + i;
   const value = new Float32Array(8), index = new Int32Array(8);
   const crumple = Math.min(CRUMPLED, rough) * cell * 0.7;
@@ -312,7 +319,7 @@ function massInto(out, clumps, cell, rough, noise, seed, pattern, LEVEL = USUAL_
       if (value[c] > LEVEL) inside++;
     }
     if (inside === 0 || inside === 8) continue;
-    let x = 0, y = 0, z = 0, crossings = 0, w = 0, far = 0, light = 0;
+    let x = 0, y = 0, z = 0, crossings = 0, w = 0, far = 0, light = 0, strongest = index[0];
     for (const [a, b] of EDGES) {
       if ((value[a] > LEVEL) === (value[b] > LEVEL)) continue;
       const t = (LEVEL - value[a]) / (value[b] - value[a]);
@@ -325,6 +332,7 @@ function massInto(out, clumps, cell, rough, noise, seed, pattern, LEVEL = USUAL_
       w += weight[index[c]];
       far += reach[index[c]];
       light += shade[index[c]];
+      if (most[index[c]] > most[strongest]) strongest = index[c];
     }
     // (Each cell's corner pushed its own way: from where the cell is, so
     // the faces round it agree on it.)
@@ -334,7 +342,7 @@ function massInto(out, clumps, cell, rough, noise, seed, pattern, LEVEL = USUAL_
       from[0] + (i + x / crossings) * cell + (push() - 0.5) * crumple,
       from[1] + (j + y / crossings) * cell + (push() - 0.5) * crumple,
       from[2] + (k + z / crossings) * cell + (push() - 0.5) * crumple,
-      w > 0 ? far / w : 0, w > 0 ? light / w : 1,
+      w > 0 ? far / w : 0, w > 0 ? light / w : 1, all[whose[strongest]].clump.limb,
     ]);
   }
 
@@ -360,7 +368,7 @@ function massInto(out, clumps, cell, rough, noise, seed, pattern, LEVEL = USUAL_
         out.position.push(s[0], s[1], s[2]);
         const grey = s[4] * facing;
         out.color.push(grey, grey, grey);
-        out.branch.push(phase, s[3], heading);
+        out.branch.push(s[5].phase, s[3], s[5].heading);
       }
     }
   };

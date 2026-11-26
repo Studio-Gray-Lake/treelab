@@ -5,7 +5,7 @@ import { NOON, SUNRISE, SUNSET, lightAt, onScreen, sunAt, DAY_EXPOSURE, SKY_SHAR
 import { RANGES, normalize } from '../src/settings.js';
 
 // The day's light (src/light.js): the sun's path, the light, haze and
-// exposure for each hour, and the screen's colours for the fog.
+// exposure for each hour, and the screen's colours for the far veil.
 
 const HOURS = [];
 for (let h = RANGES['light.hour'][0]; h <= RANGES['light.hour'][1]; h += RANGES['light.hour'][2]) HOURS.push(h);

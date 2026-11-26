@@ -16,6 +16,23 @@ export const NEWS = 'https://studiograylake.com/news.html';
 
 export const RELEASES = [
   {
+    version: '0.4',
+    date: '2026-11-26',
+    name: 'The English wood',
+    post: 'https://studiograylake.com/news/treelab-0-4/',
+    changes: [
+      'Seven more trees of TreeLab\'s own beside the oak: beech, hawthorn, hazel, holly, ash, silver birch and small-leaved linden',
+      'Each kind\'s crown has its own form, such as the beech\'s layered dome, the holly\'s tiers and the linden\'s billows',
+      'Seasons, from early spring to mid winter',
+      'Rules for where each kind grows, and oaks over an underwood of hazel',
+      'The forest\'s mix as a table, a row a kind, by layer and by ground covered',
+      'A forest\'s trees are of several ages, and their crowns close in a wood',
+      'Select a tree to see its kind, its age and whether it grew in a wood, and centre the view on it',
+      'Short share links, and a link always opens as it was made',
+      'Fog, mist and haze, each with one meaning',
+    ],
+  },
+  {
     version: '0.3.1',
     date: '2026-11-17',
     name: 'The oak update',

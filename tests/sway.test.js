@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { workNow } from './clock.js';
 import * as THREE from 'three';
 import { TREE_KINDS, TREE_SHAPES } from '@workshop/treeShapes.js';
 import { DEFAULT_WIND } from '@workshop/wind.js';
@@ -162,13 +163,13 @@ test('a forest sways, quickly enough, and is calmer inside', () => {
   const { records } = placeForest(settings.forest, terrain);
   createPlanter().plant(trees, records.map((r) => ({ ...r, seed: 7 })), TREE_SHAPES);
   const rig = createSwayRig({ scene, folder: folder(), wind: { ...DEFAULT_WIND, gust: 0, turbulence: 0, speed: 6 }, sway: settings.sway });
-  const start = performance.now();
+  const start = workNow();
   rig.bind({ trees, terrain, canopy: trees.userData.trees, warmUp: Math.min(20, 4000 / records.length) });
-  const bindMs = performance.now() - start;
+  const bindMs = workNow() - start;
   assert.ok(bindMs < 3000, `binding ${records.length} trees took ${bindMs.toFixed(0)} ms`);
-  const t0 = performance.now();
+  const t0 = workNow();
   run(rig, 1);
-  const frameMs = (performance.now() - t0) / 60;
+  const frameMs = (workNow() - t0) / 60;
   assert.ok(frameMs < 20, `a frame of ${records.length} springs took ${frameMs.toFixed(1)} ms`);
   // The mean wind 3 m up, under the crowns and out in the open round them.
   const mean = (inside) => {

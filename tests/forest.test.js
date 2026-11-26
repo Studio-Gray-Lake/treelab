@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { workNow } from './clock.js';
 import { TREE_KINDS, TREE_SHAPES, mulberry32 } from '@workshop/treeShapes.js';
 import { createNoise } from '../src/noise.js';
 import { createTerrain } from '../src/terrain.js';
@@ -200,11 +201,11 @@ test('sizes, variants and tints stay within the settings', () => {
 
 test('the densest, widest forest the sliders allow stays under the cap, and plants in reasonable time', () => {
   const forest = { ...defaultSettings().forest, area: 'square', radius: 40, density: 3000, pattern: 'random' };
-  const start = performance.now();
+  const start = workNow();
   const { records } = placeForest(forest, flat);
   const group = { children: [], userData: {}, add(...m) { this.children.push(...m); }, remove() {} };
   const numbers = createPlanter().plant(group, records.map((r) => ({ ...r, seed: 7 })), TREE_SHAPES);
-  const ms = performance.now() - start;
+  const ms = workNow() - start;
   assert.ok(records.length < MAX_TREES && records.length > 1500, `${records.length} trees`);
   assert.equal(numbers.models, TREE_KINDS.length * forest.variants, 'every kind\'s variants, each grown once');
   assert.ok(ms < 3000, `${ms.toFixed(0)} ms`);
@@ -350,4 +351,32 @@ test('the ground\'s facets are uneven: its corners sit off the grid, its outline
   let oneWay = 0, other = 0;
   for (let t = 0; t + 5 < pos.count; t += 6) same(t, t + 3) ? oneWay++ : other++;
   assert.ok(oneWay > 5000 && other > 5000, `${oneWay} patches cut one way, ${other} the other`);
+});
+
+test('a tree hemmed in by others grows as in a wood; one at the edge or above the rest, as in the open', async () => {
+  const { closedShape, hemmedIn, CLOSED } = await import('../src/woodGrown.js');
+  const { DEFAULT_SHAPES, OWN_KINDS } = await import('../src/kinds.js');
+  const { presetShape } = await import('../src/presets.js');
+  // (Each kind's Tree tab shape, closed in, is its own forest-grown shape; one that already is stays as it is.)
+  for (const kind of OWN_KINDS) {
+    const closed = closedShape(kind, DEFAULT_SHAPES[kind]), wood = presetShape(kind, 'forest-grown');
+    for (const key of ['height', 'spread', 'trunk']) if (key in wood) assert.deepEqual(closed[key].map((v) => +v.toFixed(2)), wood[key].map((v) => +v.toFixed(2)), `${kind}: ${key}`);
+    assert.deepEqual(closedShape(kind, wood), wood, `${kind}: forest-grown already`);
+  }
+  // (A crown made half as wide again on the Tree tab is half as wide again in the wood.)
+  const wide = { ...DEFAULT_SHAPES.oak, spread: DEFAULT_SHAPES.oak.spread.map((v) => v * 1.5) };
+  assert.ok(Math.abs(closedShape('oak', wide).spread[0] / closedShape('oak', DEFAULT_SHAPES.oak).spread[0] - 1.5) < 0.02);
+  // (A grid of trees of a height, their crowns meeting: those inside are hemmed in, the edge ones not; a tree towering
+  // over the rest is not; nor is one with room round it.)
+  const trees = [];
+  for (let i = 0; i < 7; i++) for (let j = 0; j < 7; j++) trees.push({ x: i * 8, z: j * 8, height: 20, crown: 7 });
+  const at = (i, j) => i * 7 + j;
+  const closed = hemmedIn(trees);
+  assert.ok(closed.has(at(3, 3)) && closed.has(at(1, 1)), 'inside');
+  for (const k of [at(0, 0), at(0, 3), at(6, 6), at(3, 6)]) assert.ok(!closed.has(k), `edge ${k}`);
+  trees[at(3, 3)].height = 40;
+  assert.ok(!hemmedIn(trees).has(at(3, 3)), 'towering');
+  const apart = trees.map((t) => ({ ...t, x: t.x * 5, z: t.z * 5 }));
+  assert.equal(hemmedIn(apart).size, 0, 'with room round them');
+  assert.ok(CLOSED >= 6);
 });

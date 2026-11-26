@@ -107,6 +107,7 @@ export const OAK_SHAPE = {
   crooked: 0.35,           // how much the branches zig-zag (0 straight)
   droop: 0.2,              // how much long limbs sag (0 none)
   leafiness: 0.65,         // how full the crown is (how little light its leaves live on: 0 a thin crown, 1 a full one)
+  sideLeaves: 1,           // how many of the twigs off a branch's side keep their leaves (1: all that have the light for it, as an oak's; 0: none: leaves only at the branches' ends, where an ash's sit; between: that share of them, each twig by its own chance)
   crowded: 0,              // how near its neighbours stand (their crowns keep the low sky off its sides): 0 alone in the open, 1 crowns as tall as its own, its own width away
   reachBottom: 0,          // the crown's outline: how far its branches reach, as a share of half the crown's width, at its bottom (0: it closes to a point there)
   reachLow: 0.98,          // a quarter of the way up it
@@ -115,6 +116,8 @@ export const OAK_SHAPE = {
   reachTop: 0,             // at its top (0: it closes to a point; more: a flat top)
   clumpSize: [1.6, 2.8],   // m: a cluster of leaves, its radius
   squash: 0.9,             // a cluster's height over its width
+  hang: 0,                 // how far the leaves at a branch's end hang below their twigs, as a share of their height (0: they sit on their twigs, as all leaves along a branch do; 1: the whole cluster below them). A cluster that hangs is longer, too: a silver birch's branch ends trail, while its crown stands
+  clumpWide: 1,            // how many times wider a cluster's leaves are drawn than the size the light allows it (1: as allowed. More: the same leaves spread over more width, as a flat layer's are. Not grown: a factor on what is drawn)
   rough: 0.25,             // how lumpy the clusters are
   sway: 0.04,              // m a branch tip bobs per m/s of wind
   gnarl: 0.15,             // how lumpy and fluted the trunk and the big limbs are (0 smooth, 1 an ancient oak's, 2 far past it)
@@ -125,6 +128,7 @@ export const OAK_SHAPE = {
   flare: 0.35,             // how far the trunk's foot spreads into its roots
   roots: 0.35,             // how far its roots run out over the ground (0 none)
   merge: 70,               // % : how many of the clusters near enough to run together into one mass do (100: all, a limb's leaves one mass; 0: every cluster a mass of its own)
+  across: 0,               // whether the leaves of different limbs run together too (0: limb by limb, each limb's leaves masses of its own; 1: across the whole crown, which can then be one mass)
   leafReach: 0.2,          // how far a cluster's leaves reach toward its neighbours: more, and clusters further apart run together, and a mass is fuller between them (./leafMass.js: USUAL_LEVEL)
   noise: 0,                // % : how much 3D noise shapes the masses (0: the lumps as they are; 100: full; past it, more)
   noiseType: 0,            // what the noise is like: 0 smooth, 1 creased (puffs, sharp creases between), 2 ridged (sharp ridges), 3 cells (round clumps)
@@ -141,18 +145,18 @@ export const OAK_SHAPE = {
 // copes with every end (tests/oak.test.js).
 export const OAK_LIMITS = {
   height: [2, 50, 0.5], spread: [0.25, 2.5, 0.05], trunk: [0.3, 30, 0.1], girth: [0.03, 3, 0.01], lean: [0, 45, 0.5],
-  limbs: [1, 12, 1], crooked: [0, 2, 0.01], droop: [0, 2, 0.01], leafiness: [0, 1, 0.01], crowded: [0, 3, 0.05], clumpSize: [0.2, 20, 0.05],
-  squash: [0.15, 2.5, 0.01], rough: [0, 1, 0.01], sway: [0, 0.3, 0.002],
+  limbs: [1, 12, 1], crooked: [0, 2, 0.01], droop: [0, 2, 0.01], leafiness: [0, 1, 0.01], sideLeaves: [0, 1, 0.01], crowded: [0, 3, 0.05], clumpSize: [0.2, 20, 0.05],
+  squash: [0.15, 2.5, 0.01], hang: [0, 1, 0.01], clumpWide: [0.5, 2, 0.01], rough: [0, 1, 0.01], sway: [0, 0.3, 0.002],
   gnarl: [0, 2, 0.01], burrs: [0, 2, 0.01], hollows: [0, 2, 0.01], stubs: [0, 2, 0.01], flare: [0, 2, 0.01], roots: [0, 2, 0.01],
   bends: [0, 2, 0.01], marksHigh: [0, 1, 0.01], age: [10, 800, 1],
   leader: [0.15, 1, 0.01], whorl: [0, 8, 1], riseTop: [-30, 90, 1], riseBottom: [-60, 90, 1],
   reachBottom: [0, 1.3, 0.01], reachLow: [0, 1.3, 0.01], reachMid: [0, 1.3, 0.01], reachHigh: [0, 1.3, 0.01], reachTop: [0, 1.3, 0.01],
-  merge: [0, 100, 1], leafReach: [0.05, 0.6, 0.01], noise: [0, 200, 1], coarse: [0.3, 2, 0.05],
+  merge: [0, 100, 1], across: [0, 1, 1], leafReach: [0.05, 0.6, 0.01], noise: [0, 200, 1], coarse: [0.3, 2, 0.05],
   noiseType: [0, NOISE_TYPES.length - 1, 1], noiseSize: [0.3, 12, 0.05], noiseDetail: [0, MOST_LAYERS, 1], noiseBend: [0, 5, 0.05], noiseBillow: [0, 3, 0.05],
 };
 
 // The settings that are a choice, not an amount: { setting: { name: value } }.
-export const OAK_CHOICES = { noiseType: Object.fromEntries(NOISE_TYPES.map((name, i) => [name, i])) };
+export const OAK_CHOICES = { noiseType: Object.fromEntries(NOISE_TYPES.map((name, i) => [name, i])), across: { 'limb by limb': 0, 'the whole crown': 1 } };
 
 // (For a crown up to the biggest the usual settings grow; a bigger one gets
 // more: see above.)
@@ -173,15 +177,29 @@ const USUAL_OAK = { height: 19.5, width: 22.4, bare: 3.25 }; // m: the usual oak
 // which a crown gets more of everything; how many steps a branch takes up
 // the tree's height (a narrow crown needs finer steps than a broad one);
 // which of the workshop's kinds its sway is tuned as; and its bark (the
-// foot's colour and the limbs'; none: the oak's). A kind may also say how
+// foot's colour and the limbs', and what else ./oakMesh.js draws of it: a
+// birch's dark twigs and black marks; none: the oak's). A kind may also say at
+// what thickness its trunk is as marked as its sliders say ("marked", m:
+// a small tree shows its age on less wood than an oak), that it grows as
+// stems from a stool and not on a trunk ("stems": see layoutOak), that
+// it keeps its leaves the year round ("evergreen": src/kinds.js), when
+// in the year it has its leaves ("leaf": { out, holds }, src/season.js),
+// where it grows ("site": { ground: the stretch of the hills' height it
+// likes, shade: how much shade it bears }, src/site.js), how
+// slender its wood may be ("slender": a branch's length over its radius,
+// at most; an oak's unless it says), how
 // lumpy its crown's outline is beside an oak's ("lumps": a fir's cone is
 // regular), and that its leaves are needles ("needles").
-export const OAK_FRAME = { usual: USUAL_OAK, outline: USUAL, steps: STEPS, kind: 'broadleaf', bark: null, needles: false };
+export const OAK_FRAME = { usual: USUAL_OAK, outline: USUAL, steps: STEPS, kind: 'broadleaf', bark: null, needles: false, leaf: { out: 0.7, holds: 0.85 }, site: { ground: [0, 0.75], shade: 0.35 } }; // (an oak is late into leaf, and holds a share of its leaves, brown, into winter)
 const PIPE = 2.2;          // thickness: a parent's radius^PIPE = the sum of its children's
 const TWIG = 0.012;        // m: no wood is drawn thinner than about this
 const KEEPS_UP = 0.25;     // a side twig keeps its leaves if it has grown at least this share of what its branch has grown on past it
+const CLEAR = 0.4;         // m: leaves that hang ("hang") stop this far above the ground
+const HANGS_LONG = 1.6;    // and a cluster that hangs is this much longer, for each share of its height it hangs by (at 0.45: about three quarters longer)
+const LEFT = 0.2;          // and a branch's end that short, if its twigs still grew after this share of the tree's growing (its rounds)
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 const SLENDER = 80;        // a branch's length to its farthest tip is at most this many times its radius (a limb 15 m long: at least 38 cm across; an oak's is 20 to 40)
+const STOOL = 0.15;         // m: how high a stool stands (the foot of a kind that grows as stems, not on a trunk)
 const TAPERS = 0.95;       // and wood made thicker for its length is at most this share of the thickness of the wood it grows from
 const SHARPEST = 50;       // degrees: wood thicker than STIFF turns no more sharply than this from one step to the next
 const STIFF = 0.04;        // m (its radius)
@@ -243,17 +261,34 @@ const spreadOut = (i) => {
 };
 
 export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
-  // (A shape may list only what it changes: the rest is the oak's own.)
+  // (A kind's shape may list only what it has: the rest is the oak's own.)
   shape = { ...OAK_SHAPE, ...shape };
   const part = partOf(seed >>> 0);
   const one = (name, which) => part(name, which)();
-  const between = ([a, b], name) => a + (b - a) * one(name);
-  const count = ([a, b], name) => Math.round(a) + Math.floor(one(name) * (Math.round(b) - Math.round(a) + 1));
+  // What this tree draws for itself from each range of its kind (a kind's
+  // "height" is 14 to 26 m, and this tree's 20.3): kept under the setting's
+  // own key, so the panel can mark one tree among its kind (src/select.js:
+  // drawnIn). Only what a tree draws once: a range drawn for each of its
+  // clusters (their size) has no one value.
+  const drew = {};
+  const between = ([a, b], name) => (drew[name] = a + (b - a) * one(name));
+  const count = ([a, b], name) => (drew[name] = Math.round(a) + Math.floor(one(name) * (Math.round(b) - Math.round(a) + 1)));
 
   const height = between(shape.height, 'height');
   const width = height * between(shape.spread, 'spread');
-  const bare = Math.min(between(shape.trunk, 'trunk'), height * 0.75);
-  const girth = between(shape.girth, 'girth');
+  // Stems (a frame's "stems": the hazel, ./broadleaves.js). Such a kind has
+  // no trunk. Its foot is a stool: a low stump, STOOL high and as wide as
+  // "stool" says (its radius, m). Its limbs are its stems: every one leaves
+  // the stool, each from its own place toward the rim, and none carries
+  // the stool on upward. "girth" is its thickest stem's radius, and the
+  // others are as much thinner as they carry less. It has no bare trunk,
+  // no leader, no rings of limbs, no bends of the trunk, no burrs or
+  // hollows: those settings are passed over.
+  const stems = Boolean(frame.stems);
+  const bare = stems ? STOOL : Math.min(between(shape.trunk, 'trunk'), height * 0.75);
+  if (!stems) drew.trunk = bare; // (as it stands: never more than three quarters of the tree)
+  const stem = between(shape.girth, 'girth');
+  const girth = stems ? Math.max(stem, shape.stool ?? 0.25) : stem;
   // (How many times as wide and tall as the usual biggest crown, for its
   // detail; and so how many times the points, the wood and the clusters.)
   const big = Math.min(MOST, Math.max(1, Math.sqrt((height * width) / frame.outline)));
@@ -311,8 +346,9 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
   // --- 2. Trunk and limbs -----------------------------------------------------------
 
   const nodes = [];
+  let now = 0, rounds = 0; // (the round of growing a step of wood is grown in: 0 for the trunk and the limbs' starts; and how many rounds there were)
   const node = (p, parent, grows = true) => {
-    const n = { p, parent, children: [], grows, limb: parent?.limb ?? null, i: nodes.length };
+    const n = { p, parent, children: [], grows, limb: parent?.limb ?? null, i: nodes.length, born: now };
     nodes.push(n);
     if (parent) parent.children.push(n);
     return n;
@@ -330,11 +366,11 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
   // runs to its top whatever its crown's shape.)
   const leading = Math.min(1, Math.max(0.15, shape.leader ?? 0.3));
   const leads = Math.min(1, Math.max(0.15, leading + 0.79 * (widest - WIDEST) * ((1 - leading) / (1 - 0.3))));
-  const leaderTop = grow.bare + (crownTop - grow.bare) * leads;
+  const leaderTop = stems ? step : grow.bare + (crownTop - grow.bare) * leads;
   const limbCount = count(shape.limbs, 'limbs');
   // (In rings: so many limbs to a ring, the rings evenly up the leader, the
   // lowest first, each ring turned against the one below.)
-  const ring = Math.max(0, Math.round(shape.whorl ?? 0));
+  const ring = stems ? 0 : Math.max(0, Math.round(shape.whorl ?? 0));
   const rings = ring ? Math.ceil(limbCount / ring) : 0;
   const limbs = Array.from({ length: limbCount }, (_, i) => {
     const own = part('limb', i);
@@ -342,7 +378,7 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
     const up = ring
       ? Math.min(0.98, Math.max(0, (Math.floor(i / ring) + 0.5 + (wobble - 0.5) * 0.3) / rings)) // (how far up the leader, as a share of it)
       : spreadOut(i) * 0.85 * (0.8 + wobble * 0.4);
-    return { index: i, up, at: grow.bare + (leaderTop - grow.bare) * up, turn: (own() - 0.5) * 0.5, tilt: (own() - 0.5) * 12, phase: own() * Math.PI * 2 };
+    return { index: i, up, at: stems ? 0 : grow.bare + (leaderTop - grow.bare) * up, turn: (own() - 0.5) * 0.5, tilt: (own() - 0.5) * 12, phase: own() * Math.PI * 2, rim: own(), long: own() };
   });
   const limbAt = new Map();
   const wander = part('trunk');
@@ -368,9 +404,20 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
     const dir = [Math.cos(heading) * Math.sin(tilt), Math.cos(tilt), Math.sin(heading) * Math.sin(tilt)];
     let n = from;
     const sways = { phase: limb.phase, heading, index: limb.index };
-    for (let s = 0; s < 3; s++) {
+    if (stems) {
+      // (A stem starts at its own place on the stool, toward the rim and inside it: not all of them from its middle.)
+      const far = (girth * (0.4 + 0.45 * limb.rim)) / (width / grow.width);
+      n = node([from.p[0] + Math.cos(heading) * far, from.p[1] * 0.4, from.p[2] + Math.sin(heading) * far], from, false);
+      n.limb = sways;
+    }
+    // (A limb: three steps. A stem: it has no trunk to carry it up to where the crown opens, and left to compete
+    // from the stool the first few stems up take every point and the rest stay stubs. So each stem is a rod of its
+    // own length first, a third to over half of the crown's height, and grows on from there.)
+    const starts = stems ? Math.max(3, Math.round(((crownTop - crownBottom) * (0.35 + 0.25 * limb.long)) / step)) : 3;
+    for (let s = 0; s < starts; s++) {
       n = node([n.p[0] + dir[0] * step, n.p[1] + dir[1] * step, n.p[2] + dir[2] * step], n);
       n.limb = sways;
+      if (stems) n.rod = true; // (a stem's own rod: drawn whole, however thin: see where the wood is thinned)
     }
   }
 
@@ -413,6 +460,7 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
   const maxNodes = Math.round(MAX_NODES * more);
 
   for (let round = 0; round < 220 && nodes.length < maxNodes; round++) {
+    now = rounds = round + 1;
     const pulls = new Map();
     let alive = 0;
     for (const a of points) {
@@ -467,7 +515,8 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
     n.r = n.children.length ? Math.pow(n.children.reduce((s, c) => s + c.r ** PIPE, 0), 1 / PIPE) : 1;
   }
   const root = nodes[0];
-  const scale = girth / root.r;
+  // (Stems: the thickest of them as thick as asked, and the stool as wide as asked.)
+  const scale = stems ? stem / Math.max(...nodes.filter((n) => n.parent && ofTrunk.has(n.parent) && !ofTrunk.has(n)).map((n) => n.r)) : girth / root.r;
   // A branch is never thinner than its length allows. Thickness from the
   // tips down thins too fast on a thin-trunked tree (the skeleton has a few
   // hundred tips where an oak has many thousands), and leaves a limb 15 m
@@ -480,8 +529,8 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
     for (const c of n.children) n.span = Math.max(n.span, c.span + Math.sqrt(d2(c.p, n.p)));
   }
   for (const n of nodes) {
-    n.r *= scale;
-    if (n.parent) n.r = Math.max(n.r, Math.min(n.span / SLENDER, n.parent.own * TAPERS));
+    n.r = stems && ofTrunk.has(n) ? girth : n.r * scale;
+    if (n.parent) n.r = Math.max(n.r, Math.min(n.span / (frame.slender ?? SLENDER), n.parent.own * TAPERS));
     n.own = n.r; // (its own thickness: the mesher spreads the foot itself, by the "flare")
     if (n.p[1] < 1.2) n.r *= 1 + 0.35 * Math.exp(-n.p[1] / 0.45); // the swollen foot
   }
@@ -550,7 +599,7 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
   // Only the thickest DRAWN steps are wood; the twigs beyond become leaves.
   const radii = nodes.map((n) => n.r).sort((a, b) => b - a);
   const cut = radii[Math.min(radii.length - 1, Math.round(DRAWN * more))];
-  for (const n of nodes) n.drawn = n === root || n.r > cut;
+  for (const n of nodes) n.drawn = n === root || n.r > cut || n.rod === true;
   for (const n of order) if (n.drawn && n.parent) n.parent.drawn = true;
 
   // How far out along its limb each step is (for the sway).
@@ -625,11 +674,28 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
       clusters.push({ c, r: Math.min(most, Math.max(Math.min(cLo, most), extent + cLo * 0.5)), w: group.length, n, twigs: group, end, far, id: n.i * 8 + Math.min(7, n.clusters - 1) });
     }
   };
+  // (A drawn branch's end can have stopped long ago too. A big limb that set off where the crown had no room for it, low
+  // on a forest-grown trunk, never grew: it is a stub the tree has grown on past, and its twigs are as old as the tree's
+  // first wood. So an end whose twigs last grew in the first LEFT of the tree's growing, on a branch the wood it left has
+  // since run on many times as far as (as for a side twig, above), is bare. Not on a kind of stems from a stool: its
+  // short stems stand at its edge, in the light, not under a crown that closed over them.)
+  const leftBehind = (n) => {
+    if (stems) return false;
+    const reaches = (m) => m.out + Math.sqrt(d2(m.p, m.parent.p));
+    let m = n;
+    while (m.parent && reaches(m) > m.parent.out - 1e-9) m = m.parent; // (back to where its branch left the wood that ran on)
+    if (!m.parent || reaches(m) >= KEEPS_UP * m.parent.out) return false;
+    return Math.max(...twigsOf(n).map((twig) => twig.born)) < LEFT * rounds;
+  };
+  const sideLeaves = shape.sideLeaves ?? 1;
   for (const n of nodes) {
     if (!n.drawn || frame.needles) continue; // (needles: boughs along the drawn branches, further down)
     const fine = n.children.filter((c) => !c.drawn);
-    if (!n.children.some((c) => c.drawn)) cluster(twigsOf(n), n, true); // a drawn branch's end
-    else for (const f of fine) if (n.p[1] > bare) cluster(twigsOf(f), n, false); // twigs off its side
+    if (!n.children.some((c) => c.drawn)) { // a drawn branch's end
+      if (leftBehind(n)) stops.push({ n, toward: middle(twigsOf(n)) });
+      else cluster(twigsOf(n), n, true);
+    }
+    else for (const f of fine) if (n.p[1] > bare && (sideLeaves >= 1 || one('side leaves', f.i) < sideLeaves)) cluster(twigsOf(f), n, false); // twigs off its side (those of them that keep leaves: "sideLeaves")
   }
   const candidates = Math.round(CANDIDATES * more);
   for (let size = cLo; clusters.length > candidates; size *= 1.25) {
@@ -648,18 +714,39 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
     }
     clusters = [...cells.values()];
   }
+  // (Leaves that hang, "hang": only those at a branch's end, where a tree's thin twigs trail; the clusters along a branch
+  // sit on their twigs. A cluster that hangs has its middle that share of its height below where it would sit, and is
+  // longer by HANGS_LONG of that share: a tress. One low on the tree hangs only as far as there is room: its foot stays
+  // CLEAR of the ground, so it is shorter, not in the ground.)
+  const hangs = shape.hang ?? 0;
   const places = clusters.map((k) => {
     const r = k.r * fill;
-    return { center: [k.c[0], k.c[1] + r * shape.squash * 0.25, k.c[2]], radius: r, squash: shape.squash, n: k.n, twigs: k.twigs, end: k.end, far: k.far, id: k.id };
+    const hang = k.end ? hangs : 0;
+    const long = shape.squash * (1 + HANGS_LONG * hang);
+    // (Its foot: its middle, less its drawn half-height, which is its radius as drawn ("clumpWide") by how tall it is, a tenth more for its lumps.)
+    const tall = r * (shape.clumpWide ?? 1) * 1.1;
+    const squash = hang > 0 ? Math.max(Math.min(long, 0.5), Math.min(long, (k.c[1] - CLEAR) / (r * (hang - 0.25) + tall))) : shape.squash;
+    const y = k.c[1] + r * squash * (0.25 - hang);
+    return { center: [k.c[0], hang > 0 ? Math.max(y, CLEAR + tall * squash) : y, k.c[2]], radius: r, squash, n: k.n, twigs: k.twigs, end: k.end, far: k.far, id: k.id };
   });
   // (Should more than can be drawn keep their leaves, the dimmest go without.)
   const neighbours = shape.crowded > 0 ? { top: height, away: width / shape.crowded } : null;
   const lit = leafy(places, least, neighbours).sort((a, b) => b.light - a.light).slice(0, Math.round(CLUMPS * more)).sort((a, b) => b.center[1] - a.center[1]);
-  let clumps = lit.map((k) => {
+  // The season ("leaves": how much of its leaves the tree carries, 1 all of
+  // them, 0 none; src/season.js gives each kind its share by the time of
+  // year). With less than all, clusters go, each at its own turn (a cluster
+  // has a number of its own: the lower "leaves" falls, the more of them
+  // are past it), and those left are smaller. A cluster that has gone
+  // keeps its twig, drawn bare. An evergreen (its frame says so, or it has
+  // needles) carries all of them whatever is asked.
+  const carried = frame.needles || frame.evergreen ? 1 : Math.min(1, Math.max(0, shape.leaves ?? 1));
+  const inLeaf = carried >= 1 ? lit : lit.filter((k) => part('leaf fall', k.id)() < carried);
+  const thinned = 0.35 + 0.65 * carried;
+  let clumps = inLeaf.map((k) => {
     const sways = swayOf(k.n);
     const own = part('cluster', k.id);
     return {
-      center: k.center, radius: k.radius, squash: shape.squash * (0.9 + own() * 0.2),
+      center: k.center, radius: k.radius * thinned * (shape.clumpWide ?? 1), squash: k.squash * (0.9 + own() * 0.2),
       turn: own() * Math.PI * 2, rough: shape.rough, seed: Math.floor(own() * 2 ** 31), shade: 0.9 + own() * 0.15,
       limb: limbOf(k.n, sways, sways),
     };
@@ -672,9 +759,16 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
     let twig = k.twigs[0];
     for (const m of k.twigs) if (d2(m.p, k.center) < d2(twig.p, k.center)) twig = m;
     for (let m = twig; m && !m.drawn; m = m.parent) m.drawn = true;
+    // (Whether it reaches in is judged by the cluster as drawn: smaller as its leaves fall ("thinned"), wider or narrower by
+    // "cluster width". Judged by its summer size, a twig that reached into the summer cluster stopped short of the autumn one,
+    // and the leaves hung in the air above it.)
+    const r = (carried >= 1 || inLeaf.includes(k) ? thinned : 1) * (shape.clumpWide ?? 1) * k.radius;
+    // (It ends among the leaves if it ends well inside the cluster and above the hollow under it, which ends the leaves
+    // about a third of the way down from its middle: ./leafMass.js. A twig ending in the hollow showed the leaves above it.)
     const dy = twig.p[1] - k.center[1];
-    const within = ((twig.p[0] - k.center[0]) ** 2 + (twig.p[2] - k.center[2]) ** 2) / k.radius ** 2 + (dy / (k.radius * k.squash * (dy < 0 ? 0.6 : 1))) ** 2;
-    if (within > 0.5) stalks.push({ twig, to: k.center });
+    const among = ((twig.p[0] - k.center[0]) ** 2 + (twig.p[2] - k.center[2]) ** 2) / r ** 2 + (dy / (r * k.squash)) ** 2 <= 0.5 && dy > -r * k.squash / 3;
+    // (On into the cluster, if it's in leaf: a bare twig ends where it ends.)
+    if (!among && (carried >= 1 || inLeaf.includes(k))) stalks.push({ twig, to: k.center });
   }
 
   // (Once more, now that it's known which wood is drawn: at the thin ends a
@@ -707,7 +801,7 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
   // at the ground. Whatever is at a height goes with the trunk there; above
   // its top, with its top. It comes after the leaves are placed, so it
   // moves the tree and regrows nothing: the same wood, the same clusters.
-  if (shape.bends > 0) {
+  if (shape.bends > 0 && !stems) {
     const pattern = pushesOf(part('bends')() * 2 ** 31);
     const apart = step * Math.max(longer, 1); // m: the trunk's steps
     const between = Math.max(2 + 3.5 * girth, 3 * apart); // m from one bend to the next
@@ -785,8 +879,11 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
     for (;;) {
       const drawn = n.children.filter((c) => c.drawn).sort((a, b) => b.r - a.r || a.i - b.i);
       if (!drawn.length) return out;
-      starts.push(...drawn.slice(1).map((c) => ({ from: n, to: c })));
-      n = drawn[0];
+      // (A stool carries on only as stool: every stem leaves it, and starts a run of its own.)
+      const on = stems && ofTrunk.has(n) ? drawn.find((c) => ofTrunk.has(c)) : drawn[0];
+      starts.push(...drawn.filter((c) => c !== on).map((c) => ({ from: n, to: c })));
+      if (!on) return out;
+      n = on;
       out.push(n);
     }
   }
@@ -906,15 +1003,15 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
   // (Low down: a burr's own number puts it nearer the foot the less
   // "marksHigh" is; at 1, anywhere up the bare trunk, as likely here as
   // there. And the higher, the smaller.)
-  const aged = agedBy(girth), high = Math.min(1, Math.max(0, shape.marksHigh));
+  const aged = agedBy(girth, frame.marked), high = Math.min(1, Math.max(0, shape.marksHigh));
   const low = (share) => Math.pow(share, 1 + 2 * (1 - high));
-  const burrs = Array.from({ length: Math.round(shape.burrs * 8 * aged) }, (_, i) => {
+  const burrs = Array.from({ length: stems ? 0 : Math.round(shape.burrs * 8 * aged) }, (_, i) => {
     const own = part('burr', i);
     const y = 0.35 + low(own()) * Math.max(0.4, bare + girth - 0.35);
     const less = 0.55 + 0.45 * markedAt(y, girth, high);
     return { y, angle: own() * Math.PI * 2, size: girth * (0.22 + own() * 0.3) * less, tall: girth * (0.1 + own() * 0.2) * less };
   });
-  const hollows = Array.from({ length: Math.round(shape.hollows * 3) }, (_, i) => {
+  const hollows = Array.from({ length: stems ? 0 : Math.round(shape.hollows * 3) }, (_, i) => {
     const own = part('hollow', i);
     const wide = girth * (0.5 + own() * 0.4);
     return { y: 0.45 + girth * 0.5 + low(own()) * Math.max(0.3, bare - 1), angle: own() * Math.PI * 2, wide, tall: wide * (1.4 + own() * 1.2), depth: girth * (0.45 + own() * 0.2) };
@@ -930,7 +1027,8 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
     const far = Math.hypot(...way) || 1;
     return { p: n.p, toward: way.map((v) => v / far), parent: thick(n), reach: sways, phase: limb.phase, heading: limb.heading, ...stubLike(part('stub', n.i), thick(n)) };
   });
-  const onTrunk = Math.round(shape.stubs * 5 * Math.min(2, Math.max(0.3, bare / 3)));
+  // (None on a stool: its dead wood is on its stems.)
+  const onTrunk = stems ? 0 : Math.round(shape.stubs * 5 * Math.min(2, Math.max(0.3, bare / 3)));
   for (let i = 0; i < onTrunk; i++) {
     const own = part('trunk stub', i);
     stubs.push({ y: bare * (0.3 + own() * 0.65), angle: own() * Math.PI * 2, rise: (10 + own() * 30) * (Math.PI / 180), ...stubLike(own, girth) });
@@ -948,14 +1046,15 @@ export function layoutOak(seed, shape = OAK_SHAPE, frame = OAK_FRAME) {
   return {
     kind: frame.kind, segments, clumps, tiers: [], lean, kinks, swept,
     // (How the leaves are drawn: as masses, ./leafMass.js. On a small tree the clusters are smaller, and the facets with them.)
-    leaves: { boughs, cell: shape.coarse * Math.max(0.45, small), level: shape.leafReach ?? 0.2, rough: shape.rough, noise: shape.noise / 100, pattern: patternFrom({ type: NOISE_TYPES[Math.round(shape.noiseType)], size: shape.noiseSize, detail: shape.noiseDetail, bend: shape.noiseBend, billow: shape.noiseBillow }), merge: shape.merge / 100, seed: Math.floor(one('leaf noise') * 2 ** 31) },
+    leaves: { boughs, cell: shape.coarse * Math.max(0.45, small), level: shape.leafReach ?? 0.2, rough: shape.rough, noise: shape.noise / 100, pattern: patternFrom({ type: NOISE_TYPES[Math.round(shape.noiseType)], size: shape.noiseSize, detail: shape.noiseDetail, bend: shape.noiseBend, billow: shape.noiseBillow }), merge: shape.merge / 100, across: (shape.across ?? 0) >= 0.5, seed: Math.floor(one('leaf noise') * 2 ** 31) },
     // (For the oak's own mesher, ./oakMesh.js.)
     // (gnarl: as asked, by the trunk's thickness; marks: how it thins out with height.)
     wood: { seed: Math.floor(one('wood') * 2 ** 31), girth, bare, height, gnarl: shape.gnarl * aged, marks: { high, girth }, flare: shape.flare, runs, roots, burrs, hollows, stubs, bark: frame.bark },
     oak: {
-      height, width, bare, girth, nodes: nodes.length, points: points.length, joins, limbStarts, places: places.length, stopped: stops.length, big,
+      height, width, bare, girth, stem: stems ? stem : null, nodes: nodes.length, points: points.length, joins, limbStarts, places: places.length, stopped: stops.length, big,
       // (Each kept cluster: whether it's a branch's end, how far its wood is from the crown's edge, and the light under it.)
-      kept: lit.map((k) => ({ end: k.end, out: k.n.out, far: k.far, light: k.light })),
+      kept: lit.map((k) => ({ end: k.end, out: k.n.out, far: k.far, light: k.light })), carried, inLeaf: inLeaf.length,
+      drew,
     },
   };
 }

@@ -1,4 +1,5 @@
 import { DEFAULT_SHAPES } from './kinds.js';
+import { BEECH_FOREST, BEECH_STAGES, HAWTHORN_PLACES, HAWTHORN_STAGES, HAZEL_PLACES, HAZEL_STAGES, HOLLY_FOREST, HOLLY_STAGES, ASH_FOREST, ASH_STAGES, BIRCH_FOREST, BIRCH_STAGES, LINDEN_FOREST, LINDEN_STAGES } from './oak/broadleaves.js';
 import { limitsFor, sliderKind } from './limits.js';
 
 // Ready-made shapes to start a kind from (the shape panel's "start from"):
@@ -20,6 +21,58 @@ export const PRESETS = {
     'forest-grown': { height: [26, 31], spread: [0.4, 0.55], trunk: [8, 11], girth: [0.45, 0.6], limbs: [3, 4], crooked: 0.25, droop: 0.1, crowded: 1, clumpSize: [1.6, 2.4], gnarl: 0.08, burrs: 0.1, stubs: 0.5, flare: 0.3, roots: 0.2, reachLow: 0.3, reachMid: 0.6, reachHigh: 1, reachTop: 0.3 },
     ancient: { age: 500, height: [12, 16], spread: [1.15, 1.45], trunk: [2, 3], girth: [1.1, 1.4], lean: [2, 8], limbs: [4, 6], crooked: 0.75, droop: 0.55, leafiness: 0.45, clumpSize: [1.4, 2.4], gnarl: 0.8, burrs: 0.7, hollows: 0.67, stubs: 0.7, flare: 0.7, roots: 0.7, reachBottom: 0.3, reachLow: 1.1, reachMid: 1, reachHigh: 0.85, reachTop: 0.3 },
   },
+  // TreeLab's own beech (src/oak/broadleaves.js): "open-grown" is its
+  // default: a great dense dome on a short trunk, its lowest limbs sweeping
+  // down. Young: slim and pointed, with a clear leader. Forest-grown: a
+  // clean column with a narrow crown at its top. Old: thicker, wider, its
+  // lowest limbs to the ground. Young, open-grown and old are the stages
+  // its age slider goes between.
+  beech: { 'open-grown': {}, young: BEECH_STAGES.young, 'forest-grown': BEECH_FOREST, old: BEECH_STAGES.old },
+  // TreeLab's own hawthorn (src/oak/broadleaves.js): "open-grown" is its
+  // default: a small dense round tree on a short, leaning, fluted trunk.
+  // Young: a thin upright bush of a tree. Forest-grown: under taller
+  // trees, drawn up thin, its crown open. Wind-swept: low and bowed over,
+  // its crown to the lee. Old: wider, its trunk thick, hollow and deeply
+  // fluted. Young, open-grown and old are the stages its age slider goes
+  // between.
+  hawthorn: { 'open-grown': {}, young: HAWTHORN_STAGES.young, 'forest-grown': HAWTHORN_PLACES['forest-grown'], 'wind-swept': HAWTHORN_PLACES['wind-swept'], old: HAWTHORN_STAGES.old },
+  // TreeLab's own hazel (src/oak/broadleaves.js): a shrub of many stems
+  // from one stool. "open-grown" is its default: twenty-five years uncut,
+  // about as wide as tall. Young: a few thin rods. Coppiced: cut to the
+  // stool seven years ago, a sheaf of straight rods. Forest-grown: under
+  // taller trees, drawn up, leaning out, its crown open. Old: long uncut,
+  // a few thick stems on a wide stool. Young, open-grown and old are the
+  // stages its age slider goes between.
+  hazel: { 'open-grown': {}, young: HAZEL_STAGES.young, coppiced: HAZEL_PLACES.coppiced, 'forest-grown': HAZEL_PLACES['forest-grown'], old: HAZEL_STAGES.old },
+  // TreeLab's own holly (src/oak/broadleaves.js): "open-grown" is its
+  // default: a dense dark pyramid with branches nearly to the ground.
+  // Young: a narrow cone, leafy to the ground. Forest-grown: under taller
+  // trees, thinner, leaning, its crown open. Old: taller, round-topped,
+  // its trunk clear low down, its lowest branches hanging. Young,
+  // open-grown and old are the stages its age slider goes between.
+  holly: { 'open-grown': {}, young: HOLLY_STAGES.young, 'forest-grown': HOLLY_FOREST, old: HOLLY_STAGES.old },
+  // TreeLab's own ash (src/oak/broadleaves.js): "open-grown" is its
+  // default: a tall open dome, its limbs rising steeply, the lower ones
+  // sweeping out and turning up at their tips. Young: a straight pole
+  // with a few rising branches. Forest-grown: a long clean pole
+  // with a small crown at its top. Old: broader, its lower limbs sweeping
+  // low, dead wood in its crown. Young, open-grown and old are the stages
+  // its age slider goes between.
+  ash: { 'open-grown': {}, young: ASH_STAGES.young, 'forest-grown': ASH_FOREST, old: ASH_STAGES.old },
+  // TreeLab's own birch (src/oak/broadleaves.js): "open-grown" is its
+  // default: a slim white tree with a light crown that weeps at its
+  // outside. Young: a thin brown pole. Forest-grown: a thin white pole
+  // with a small crown at its top. Old: taller, its lower limbs weeping
+  // low, its foot black. Young, open-grown and old are the stages its age
+  // slider goes between.
+  birch: { 'open-grown': {}, young: BIRCH_STAGES.young, 'forest-grown': BIRCH_FOREST, old: BIRCH_STAGES.old },
+  // TreeLab's own linden (src/oak/broadleaves.js): "open-grown" is its
+  // default: a tall, dense egg of a crown on a straight trunk, its lower
+  // limbs arching down and sweeping up at their tips. Young: a neat cone.
+  // Forest-grown: a tall straight trunk with a narrow crown at its top.
+  // Old: broader, its trunk thick, burry and hollow. Young, open-grown
+  // and old are the stages its age slider goes between.
+  linden: { 'open-grown': {}, young: LINDEN_STAGES.young, 'forest-grown': LINDEN_FOREST, old: LINDEN_STAGES.old },
   broadleaf: {
     workshop: {},
     oak: {

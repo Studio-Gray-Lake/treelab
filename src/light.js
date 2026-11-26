@@ -16,8 +16,8 @@ import * as THREE from 'three';
 //
 // A summer day: the sun rises at 5:30, stands highest at 13:00 (62° up) and
 // sets at 20:30, swinging from the left of its noon direction to the right.
-// Low, it turns golden, then orange and dims; the fog warms with it, so far
-// hills fade into the sky's own colour.
+// Low, it turns golden, then orange and dims; the far veil warms with it, so
+// far hills fade into the sky's own colour.
 
 export const SUNRISE = 5.5, NOON = 13, SUNSET = 20.5;
 export const DAY_EXPOSURE = 1.35; // the camera's exposure with the sun high, the brightest hours': a white thing in the noon sun comes out just short of white, as a photographer sets it
@@ -36,7 +36,8 @@ const mix = (a, b, t) => new THREE.Color(a).lerp(new THREE.Color(b), t);
 // shines from, degrees (0 from -z, 90 from +x, as the wind's "from").
 export function sunAt(hour, from) {
   const day = (hour - SUNRISE) / (SUNSET - SUNRISE); // 0 at sunrise, 1 at sunset
-  const elevation = day < 0 || day > 1 ? -4 : HIGHEST * Math.sin(Math.PI * day); // (just under the horizon at night)
+  // (On under the horizon as it sets, to 4° below it: it doesn't stop at the horizon and jump down.)
+  const elevation = Math.max(-4, HIGHEST * Math.sin(Math.PI * day));
   // Morning: 100° to the left of noon's direction; evening: 100° to the right.
   const azimuth = THREE.MathUtils.degToRad(from + (hour - NOON) / ((SUNSET - SUNRISE) / 2) * 100);
   const e = THREE.MathUtils.degToRad(elevation);
@@ -49,7 +50,7 @@ export const brightness = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
 
 // A colour as the screen shows it: `color` (light, as the sky gives it) at
 // `exposure`, through three.js's Neutral tone mapping (as its shader does).
-// The fog needs it: three.js mixes the fog in after the tone mapping.
+// The far veil needs it: three.js mixes its fog in after the tone mapping.
 export function onScreen(color, exposure, out = new THREE.Color()) {
   const START = 0.8 - 0.04, DESATURATION = 0.15;
   let c = [color.r, color.g, color.b].map((v) => v * exposure);
@@ -74,7 +75,7 @@ export function lightAt({ hour = 19.25, from = 220 } = {}) {
   const day = smooth(-4, 6, elevation);     // 0 after sunset
 
   const sunColor = mix(0xff7a3c, 0xffb46a, smooth(0, 8, elevation)).lerp(new THREE.Color(0xfff2e0), smooth(3, 20, elevation));
-  const fog = mix(0xd08a6a, 0xe8c9a6, smooth(-2, 10, elevation)).lerp(new THREE.Color(0xc4d6e8), high);
+  const veil = mix(0xd08a6a, 0xe8c9a6, smooth(-2, 10, elevation)).lerp(new THREE.Color(0xc4d6e8), high);
   const intensity = 3 * day * (0.6 + 0.4 * high);
   const share = SKY_SHARE[0] + (SKY_SHARE[1] - SKY_SHARE[0]) * smooth(0, 25, elevation);
 
@@ -87,19 +88,19 @@ export function lightAt({ hour = 19.25, from = 220 } = {}) {
     // sun's, and never quite nothing.
     skyGives: Math.max(NIGHT_SKY, share * intensity * brightness(sunColor)),
     // (The horizon's colour where the sky can't be read back, by its hue only.)
-    fog,
+    veil,
     sky: {
       turbidity: 2.5 + 6 * golden,
       rayleigh: 1 + 1.6 * golden,
       mieCoefficient: 0.004 + 0.008 * golden,
       mieDirectionalG: 0.8,
     },
-    // (As the eye opens up in the evening: a low sun is weaker. Up to three
-    // quarters of a stop by sunset, a stop and a half by night.)
+    // (As the eye opens up in the evening: a low sun is weaker. About a stop
+    // by sunset, a little more by night.)
     exposure: DAY_EXPOSURE * (1 + 0.69 * golden + 0.42 * (1 - day)),
-    // How much of the sun's light the clear air catches, per metre (the
-    // light shafts, src/lightShafts.js): at noon the air of a day when you
-    // see 20 km; hazier as the sun sinks, down to 5 km.
+    // The haze: how much of the sun's light the clear air catches, per metre
+    // (the light shafts, src/lightShafts.js): at noon the air of a day when
+    // you see 20 km; hazier as the sun sinks, down to 5 km.
     haze: 0.0002 + 0.0006 * (1 - smooth(5, 45, elevation)),
   };
 }

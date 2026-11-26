@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ABOUT, WELCOME_STORE, opensOnAView, showsWelcome, turnWelcomeOff, welcomeIsOff } from '../src/welcome.js';
+import { toShortLink } from '../src/link.js';
 import { defaultSettings, toLink } from '../src/settings.js';
 
 // The welcome card: shown on a first visit, not to someone sent a view by a
@@ -49,14 +50,15 @@ test('with storage blocked the card still works, and shows again', () => {
 test('someone sent a view by a link is not shown the card', () => {
   const settings = defaultSettings();
   settings.tab = 'forest';
-  const share = `#s=${toLink(settings)}`;
-  assert.equal(opensOnAView(share), true);
-  assert.equal(showsWelcome({ hash: share, store: () => storage() }), false);
+  for (const share of [`#v=${toShortLink(settings)}`, `#s=${toLink(settings)}`]) {
+    assert.equal(opensOnAView(share), true);
+    assert.equal(showsWelcome({ hash: share, store: () => storage() }), false);
+  }
   // (TreeLab's first links.)
   assert.equal(opensOnAView('#kind=fir&seed=3&variant=1'), true);
   assert.equal(showsWelcome({ hash: '#kind=fir&seed=3&variant=1', store: () => storage() }), false);
   // (Anything else in the address is not a view.)
-  for (const hash of ['', '#', '#top', '#seed=3', '#x=s=1']) assert.equal(opensOnAView(hash), false, hash);
+  for (const hash of ['', '#', '#top', '#seed=3', '#x=s=1', '#x=v=1']) assert.equal(opensOnAView(hash), false, hash);
 });
 
 test('the page has the card, and the link goes to the studio\'s website', () => {

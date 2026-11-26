@@ -22,16 +22,42 @@ export const OTHER = 'other';
 
 const CLUMPS = { clumps: 'clumps on a limb', clumpSize: 'clump size', squash: 'flat to tall', rough: 'lumpy' };
 
+// (Rows put after one of a section's rows.)
+const after = (rows, key, more) => Object.fromEntries(Object.entries(rows).flatMap(([k, v]) => (k === key ? [[k, v], ...Object.entries(more)] : [[k, v]])));
+
+// TreeLab's own English oak (src/oak/oak.js).
+const OAK = {
+  size: { age: 'age (years)', height: 'height', spread: 'crown width', lean: 'lean' },
+  trunk: { trunk: 'bare trunk', girth: 'thickness', bends: 'bends', gnarl: 'gnarl', burrs: 'burrs', hollows: 'hollows', marksHigh: 'marks reach up' },
+  roots: { flare: 'flare', roots: 'surface roots' },
+  limbs: { limbs: 'big limbs', leader: 'trunk carries on', whorl: 'limbs to a ring', riseTop: 'rise at the top (°)', riseBottom: 'rise at the bottom (°)', crooked: 'crooked', droop: 'sag', stubs: 'dead stubs' },
+  crown: { leafiness: 'fullness', sideLeaves: 'leaves along branches', crowded: 'neighbours', reachTop: 'at the top', reachHigh: 'three quarters up', reachMid: 'halfway up', reachLow: 'a quarter up', reachBottom: 'at the bottom', clumpSize: 'cluster size', clumpWide: 'cluster width', squash: 'flat to tall', hang: 'ends hang', rough: 'lumpy', merge: 'merging (%)', across: 'runs together', leafReach: 'leaves reach', coarse: 'coarseness', noise: 'amount (%)', noiseType: 'type', noiseSize: 'size (m)', noiseDetail: 'detail', noiseBend: 'bend (m)', noiseBillow: 'billow' },
+  movement: { sway: 'sway' },
+};
+// A beech's (src/oak/broadleaves.js): an oak's, and its limbs' tips.
+const BEECH = { ...OAK, limbs: after(OAK.limbs, 'droop', { tipRise: 'tips turn up' }) };
+
+// A hawthorn's: an oak's, and the wind that swept it.
+const HAWTHORN = { ...OAK, size: after(OAK.size, 'lean', { swept: 'wind-swept' }) };
+// A hazel's: a shrub of stems from a stool. No trunk's rows; its stems where an oak has its limbs.
+const HAZEL = {
+  size: OAK.size,
+  trunk: { stool: 'stool width', gnarl: 'gnarl' },
+  roots: OAK.roots,
+  limbs: { limbs: 'stems', girth: 'stem thickness', riseTop: 'steepest stems (°)', riseBottom: 'outermost stems (°)', crooked: 'crooked', droop: 'arch over', stubs: 'dead stubs' },
+  crown: OAK.crown,
+  movement: OAK.movement,
+};
+
 export const ROWS = {
-  // TreeLab's own English oak (src/oak/oak.js).
-  oak: {
-    size: { age: 'age (years)', height: 'height', spread: 'crown width', lean: 'lean' },
-    trunk: { trunk: 'bare trunk', girth: 'thickness', bends: 'bends', gnarl: 'gnarl', burrs: 'burrs', hollows: 'hollows', marksHigh: 'marks reach up' },
-    roots: { flare: 'flare', roots: 'surface roots' },
-    limbs: { limbs: 'big limbs', leader: 'trunk carries on', whorl: 'limbs to a ring', riseTop: 'rise at the top (°)', riseBottom: 'rise at the bottom (°)', crooked: 'crooked', droop: 'sag', stubs: 'dead stubs' },
-    crown: { leafiness: 'fullness', crowded: 'neighbours', reachTop: 'at the top', reachHigh: 'three quarters up', reachMid: 'halfway up', reachLow: 'a quarter up', reachBottom: 'at the bottom', clumpSize: 'cluster size', squash: 'flat to tall', rough: 'lumpy', merge: 'merging (%)', leafReach: 'leaves reach', coarse: 'coarseness', noise: 'amount (%)', noiseType: 'type', noiseSize: 'size (m)', noiseDetail: 'detail', noiseBend: 'bend (m)', noiseBillow: 'billow' },
-    movement: { sway: 'sway' },
-  },
+  oak: OAK,
+  beech: BEECH,
+  hawthorn: HAWTHORN,
+  hazel: HAZEL,
+  holly: BEECH, // (a beech's rows: an oak's, and its limbs' tips)
+  ash: BEECH,
+  birch: BEECH,
+  linden: BEECH,
   // The workshop's three (vendor/workshop/treeShapes.js).
   broadleaf: {
     size: { lean: 'lean' },
@@ -59,16 +85,24 @@ export const ROWS = {
 // { kind: { the panel's title: [settings] } }. (They're listed together in
 // their section, above.)
 const OUTLINE_ROWS = ['reachTop', 'reachHigh', 'reachMid', 'reachLow', 'reachBottom'];
+const LEAF_PANELS = {
+  outline: OUTLINE_ROWS,
+  noise: ['noise', 'noiseType', 'noiseSize', 'noiseDetail', 'noiseBend', 'noiseBillow'],
+};
 export const PANELS = {
-  oak: {
-    outline: OUTLINE_ROWS,
-    noise: ['noise', 'noiseType', 'noiseSize', 'noiseDetail', 'noiseBend', 'noiseBillow'],
-  },
+  oak: LEAF_PANELS,
+  beech: LEAF_PANELS,
+  hawthorn: LEAF_PANELS,
+  hazel: LEAF_PANELS,
+  holly: LEAF_PANELS,
+  ash: LEAF_PANELS,
+  birch: LEAF_PANELS,
+  linden: LEAF_PANELS,
 };
 
 // The panels that open with a drawing of their rows: { kind: { the panel's
 // title: what's drawn } }.
-export const DRAWINGS = { oak: { outline: 'outline' } };
+export const DRAWINGS = { oak: { outline: 'outline' }, beech: { outline: 'outline' }, hawthorn: { outline: 'outline' }, hazel: { outline: 'outline' }, holly: { outline: 'outline' }, ash: { outline: 'outline' }, birch: { outline: 'outline' }, linden: { outline: 'outline' }};
 
 // A kind's settings laid out for the panel: [{ title, rows: [{ key, name }] }],
 // the sections in their order (those with nothing in them left out), each

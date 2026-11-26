@@ -4,7 +4,10 @@ import { SKY_GLSL, skyUniforms } from './skyShade.js';
 import { LOBE, MIST_HEIGHT, PATTERN_GLSL, mistLit, setMistLight } from './mistLight.js';
 import { FAR_UP, SUN_WIDE } from './sunShadow.js';
 
-// Shafts of sunlight, and mist. The air between the camera and what it sees
+// Shafts of sunlight, mist and fog. (The words, as TreeLab uses them:
+// docs/DESIGN.md. Haze is dry and everywhere; mist is water drops through
+// which you see 1 km or more; fog is the same drops, more of them. Mist and
+// fog are one model here, named mist at any strength.) The air between the camera and what it sees
 // catches the sun where nothing shades it: that lit air glows, and the air
 // in the trees' shadows doesn't, so the light falls in shafts between the
 // trunks and through gaps in the crowns.
@@ -13,10 +16,16 @@ import { FAR_UP, SUN_WIDE } from './sunShadow.js';
 // - haze, everywhere, a little more as the sun sinks (src/light.js): the
 //   air of a clear day, in which you see 5 to 20 km. It throws light mostly
 //   onward, so its shafts show looking toward the sun, against shade. What
-//   it veils and the sky's light in it are the scene's own fog; here only
-//   the sun's light in it is counted, within the stage, where the shadows
-//   are known.
-// - mist, as much as the mist setting asks, lying on the ground: thick in
+//   it veils and the sky's light in it are the far veil (three.js's fog,
+//   a stand-in: src/main.js); here the sun's light in it is counted: in
+//   the stage, where the shadows are known, lit or shaded as they say;
+//   beyond the stage as lit (as the mist is). The far veil stands for the
+//   haze's light too, so with distance the count hands over to it: each
+//   step counts by the share the veil has not yet taken. (Were it counted
+//   in the stage only, the stage showed as a dome of brighter air, most of
+//   all with the light shafts boosted.) Not as it should be: on a pixel of
+//   sky this adds to a sky that already holds the air's light.
+// - mist (fog, above 0.31 on its slider), as much as the setting asks, lying on the ground: thick in
 //   banks and thin between them, with wisps, drifting with the wind and
 //   changing as it goes. It dims what's behind it, and shows the light it
 //   catches: the sun's, where no tree shades it (and less deep in the mist,
@@ -90,14 +99,20 @@ import { FAR_UP, SUN_WIDE } from './sunShadow.js';
 const STEPS = 40;
 const FIRST = 6;         // of them, the steps before a ray enters the stage (evenly; the rest from there on)
 const NEAR = 10;         // m: the steps from there start about a metre long and grow with the distance (plus this)
-export const MIST = 0.04; // per m: what the mist catches on the ground with the setting at 1, on average: fog (you see about 100 m: 3.9 over this, to a contrast of 2%)
+export const MIST = 0.04; // per m: what the mist catches on the ground with the setting at 1, on average: fog (you see 98 m: 3.9 over this, to a contrast of 2%)
+// How far you see through the mist or fog on the ground at a setting, m (on
+// average; less in a bank): 98 m at 1, 1 km at 0.31, 2.4 km at 0.2. Under
+// 1 km it is fog; from 1 km on, mist.
+export const SIGHT = 3.912; // (the mist between you and a thing, when it is lost to sight: its contrast down to 2%)
+export const sight = (setting) => (setting > 0 ? SIGHT / (MIST * setting * setting) : Infinity);
+export const FOG_FROM = Math.sqrt(SIGHT / (MIST * 1000)); // the setting from which it is fog: 0.31
 const BANK = [30, 10, 30]; // m: a bank of mist is about this wide, tall and deep (one cell of the noise)
 const WISP = [6, 4, 6];    // m: and a wisp
 const KEEP = 0.88;       // the share of the frames before kept in the blend, the camera still (about 8 frames' worth)
 const MOVED = 0.3;       // m a frame: the camera walking this fast, a third of that is kept (the air in front of a thing slides past it; turning costs nothing)
 const GROUND_CELLS = 128; // the ground's heights for the mist: this many each way
 
-// renderer, scene (its fog gives the mist the sky's colour, and how far the
+// renderer, scene (its far veil gives the mist the sky's colour, and how far the
 // mist is followed), camera, sun (createSun's); skip: objects left out of
 // the depth (the sky, the haze: they're the background).
 export function createLightShafts({ renderer, scene, camera, sun, skip = [] }) {
@@ -123,7 +138,8 @@ export function createLightShafts({ renderer, scene, camera, sun, skip = [] }) {
       cameraWorld: { value: new THREE.Matrix4() },
       haze: { value: 0 },    // per m
       mist: { value: 0 },    // per m, on the ground, on average
-      reach: { value: 1e4 }, // m: how far the mist is followed
+      reach: { value: 1e4 }, // m: how far the mist is followed (where the far veil is whole)
+      veilFrom: { value: 1e4 }, // m: where the far veil starts
       sunOn: { value: 0 },   // 1: the sun is up and its shadows drawn
       sunMap: { value: null },
       sunMatrix: { value: [shadow.getMatrix(0), shadow.getMatrix(1)] },
@@ -262,6 +278,7 @@ export function createLightShafts({ renderer, scene, camera, sun, skip = [] }) {
       u.haze.value = shafts ? settings.haze : 0;
       u.mist.value = settings.mist;
       u.reach.value = scene.fog?.far ?? 1e4;
+      u.veilFrom.value = Math.min(u.reach.value, scene.fog?.near ?? 1e4);
       camera.getWorldDirection(u.cameraAhead.value);
       u.toSun.value.copy(sun.position).normalize();
       u.sunOn.value = shafts ? 1 : 0;
@@ -401,6 +418,7 @@ const MARCH = /* glsl */ `
   uniform float haze;
   uniform float mist;
   uniform float reach;
+  uniform float veilFrom;
   uniform float sunOn;
   uniform sampler2DShadow sunMap;
   uniform mat4 sunMatrix[ 2 ];
@@ -505,7 +523,7 @@ const MARCH = /* glsl */ `
     ray( eye, dir, dist, depth );
     float ahead = max( 1e-3, dot( dir, cameraAhead ) );
     // The stage along the ray: from a to c (where the sun's shadows are
-    // known, and the haze's light is counted).
+    // known; beyond it the air counts as lit).
     vec3 oc = eye - stageCenter;
     float b = dot( oc, dir );
     float inside = b * b - dot( oc, oc ) + stageRadius * stageRadius;
@@ -514,16 +532,16 @@ const MARCH = /* glsl */ `
       a = max( 0.0, - b - sqrt( inside ) );
       c = - b + sqrt( inside );
     }
-    // The steps: the mist is followed to what the ray meets (or as far as
-    // the scene's fog goes); with no mist, only the stage. Up to where the
+    // The steps: the air is followed to what the ray meets (or as far as
+    // the far veil goes). Up to where the
     // ray enters the stage, a few even steps; from there on (or from the
     // camera, if it never does), steps that start about a metre long and
     // grow with the distance, so the shafts near by are finely sampled.
     // Each pixel starts at its own place in each step, a new one every
     // frame: blended over the frames, the steps don't show as bands.
-    float end = mist > 0.0 ? min( dist, reach ) : min( dist, c );
+    float end = min( dist, reach );
     float start = a < end ? a : 0.0;
-    int first = mist > 0.0 && start > 0.0 ? ${FIRST} : 0;
+    int first = start > 0.0 ? ${FIRST} : 0;
     float rest = float( ${STEPS} - first );
     float grow = log( 1.0 + max( 0.0, end - start ) / ${NEAR.toFixed(1)} );
     float jitter = fract( 52.9829189 * fract( dot( gl_FragCoord.xy + 5.588238 * frame, vec2( 0.06711056, 0.00583715 ) ) ) );
@@ -578,7 +596,9 @@ const MARCH = /* glsl */ `
           sun += caught * ( mistOnce * sunHere + again * open );
           sky += caught * open;
         }
-        if ( staged ) sun += through * haze * dt * hazeOnward * sunHere;
+        // (The haze's light, less the share of it the far veil stands for
+        // at this depth: three.js's own curve.)
+        sun += through * haze * dt * hazeOnward * sunHere * ( 1.0 - smoothstep( veilFrom, reach, t * ahead ) );
         through *= kept;
       }
     }

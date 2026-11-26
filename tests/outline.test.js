@@ -26,10 +26,11 @@ test('the outline an oak starts with is the dome it always had: the same oak for
   const was = [
     // (Recorded again on 12 Nov 2026, when sharp corners in thick wood were eased: every oak moved a little. The outline did not change.)
     // (And its leaves on 16 Nov 2026, when they became masses, seven in ten of the clusters that could join merged, where they had been balls. The wood did not change.)
-    [7, 92223, 261297.08753051359, 74772, 331464.9155966779],
-    [11, 86913, 244653.60544182186, 67068, 291909.8679517612],
-    [22, 76905, 169266.28632607055, 65916, 229893.3867238009],
-    [33, 85761, 185514.75650282355, 62964, 203328.8113053306],
+    // (And its wood on 25 Nov 2026, when a twig that ended in the hollow under its leaves was drawn on into them: a few more twigs. The leaves did not change.)
+    [7, 92871, 263325.3700183828, 74772, 331464.9155966779],
+    [11, 87453, 247484.34908349637, 67068, 291909.8679517612],
+    [22, 77337, 170696.49398698402, 65916, 229893.3867238009],
+    [33, 85977, 186141.3778550193, 62964, 203328.8113053306],
   ];
   const sum = (array) => array.reduce((total, v) => total + v, 0);
   for (const [seed, wood, woodSum, leaves, leafSum] of was) {

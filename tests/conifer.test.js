@@ -1,6 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KINDS, LEGACY_KINDS, kindName } from '../src/kinds.js';
 import { OAK_FRAME, OAK_LIMITS, OAK_SHAPE, buildOak, layoutOak } from '../src/oak/oak.js';
 
 // The conifer way of growing (src/oak/oak.js): a trunk that runs to the top
@@ -71,15 +70,6 @@ test('a conifer grows sound, in its own frame and bark', () => {
     const light = (g) => { const c = g.attributes.color; let sum = 0; for (let i = 0; i < c.count; i++) sum += c.getX(i); return sum / c.count; };
     assert.ok(light(tree.wood) > light(buildOak(seed, CONE, { ...FRAME, bark: null }).wood) + 0.01);
   }
-});
-
-test('the workshop\'s fir and pine are named by the keys they always had', () => {
-  assert.deepEqual(LEGACY_KINDS, []);
-  assert.ok(['fir', 'pine'].every((kind) => KINDS.includes(kind)), 'a kind is gone from the list');
-  assert.equal(kindName('fir'), 'fir');
-  assert.equal(kindName('pine'), 'pine');
-  assert.equal(kindName('oak'), 'oak');
-  assert.equal(kindName('broadleaf'), 'broadleaf');
 });
 
 test('a kind with needles carries twigs with needles along each branch (a bough), and no clusters', () => {

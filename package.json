@@ -1,7 +1,7 @@
 {
   "name": "treelab",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "TreeLab: grow procedural low-poly trees and forests in the browser, from Studio Gray Lake's 3D Procedural Animation Workshop. Free tech demo.",
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
@@ -13,8 +13,12 @@
     "preview": "vite preview",
     "test": "node --import ./tests/hooks.js --test",
     "sync": "node scripts/sync-workshop.js",
+    "freeze": "node --import ./tests/hooks.js scripts/freeze.mjs",
     "check:browser": "node scripts/check-browser.mjs",
     "bake:clips": "node --import ./tests/hooks.js scripts/bake-clips.mjs"
+  },
+  "engines": {
+    "node": ">=22.15"
   },
   "dependencies": {
     "three": "^0.186.1"

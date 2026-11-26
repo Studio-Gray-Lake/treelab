@@ -99,10 +99,14 @@ test('an oak of every age grows, sound', () => {
 
 // Ages in a forest: each of a kind's shapes at an age of its own.
 
-test('a forest\'s oaks are all of one age until asked otherwise', async () => {
+test('a forest\'s trees are of several ages to start with, every kind of TreeLab\'s own; of one age when asked', async () => {
   const { defaultSettings, normalize, rangeOf } = await import('../src/settings.js');
   const mix = defaultSettings().forest.mix;
-  assert.deepEqual([mix.oak.mixed, mix.oak.ages, mix.oak.old], [false, [30, 300], 0.5]);
+  assert.deepEqual([mix.oak.mixed, mix.oak.ages, mix.oak.old], [true, [30, 300], 0.5]);
+  for (const kind of KINDS.filter(isOwn)) assert.equal(mix[kind].mixed, true, kind);
+  // (A link made before opens of one age, as it was made: its record says so.)
+  const { fromShortLink } = await import('../src/link.js');
+  for (const kind of KINDS.filter(isOwn)) assert.equal(fromShortLink('10').settings.forest.mix[kind].mixed, false, kind);
   for (const kind of KINDS.filter((k) => !isOwn(k))) assert.ok(!('mixed' in mix[kind]) && !('ages' in mix[kind]), kind);
   assert.deepEqual(rangeOf('forest.mix.oak.ages'), [10, 800, 1]);
   assert.deepEqual(rangeOf('forest.mix.oak.old'), [0, 1, 0.01]);

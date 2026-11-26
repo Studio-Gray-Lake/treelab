@@ -3,7 +3,8 @@ import { PRESETS, presetShape } from './presets.js';
 
 // A tree's age, as a slider that moves the others.
 //
-// A kind that has it (TreeLab's own: the oak) has a ready-made shape for each stage of its
+// A kind that has it (TreeLab's own: the oak, the beech, the hawthorn, the
+// hazel, the holly, the ash, the birch, the linden) has a ready-made shape for each stage of its
 // life in the open (src/presets.js): young, grown, ancient, each at an age.
 // The age slider sets every setting those shapes differ in to what it is at
 // that age, between the stage before and the stage after: its height, its
@@ -27,8 +28,15 @@ import { PRESETS, presetShape } from './presets.js';
 
 export const AGES = {
   oak: [{ age: 15, preset: 'young' }, { age: 150, preset: 'open-grown' }, { age: 500, preset: 'ancient' }],
+  beech: [{ age: 20, preset: 'young' }, { age: 120, preset: 'open-grown' }, { age: 300, preset: 'old' }],
+  hawthorn: [{ age: 10, preset: 'young' }, { age: 60, preset: 'open-grown' }, { age: 250, preset: 'old' }],
+  hazel: [{ age: 5, preset: 'young' }, { age: 25, preset: 'open-grown' }, { age: 70, preset: 'old' }],
+  holly: [{ age: 12, preset: 'young' }, { age: 60, preset: 'open-grown' }, { age: 250, preset: 'old' }],
+  ash: [{ age: 15, preset: 'young' }, { age: 100, preset: 'open-grown' }, { age: 220, preset: 'old' }],
+  birch: [{ age: 8, preset: 'young' }, { age: 40, preset: 'open-grown' }, { age: 90, preset: 'old' }],
+  linden: [{ age: 20, preset: 'young' }, { age: 120, preset: 'open-grown' }, { age: 400, preset: 'old' }],
 };
-const BY_YEARS = new Set(['girth', 'gnarl', 'burrs', 'hollows', 'stubs', 'flare', 'roots']);
+const BY_YEARS = new Set(['girth', 'stool', 'gnarl', 'burrs', 'hollows', 'stubs', 'flare', 'roots']);
 
 // The settings a kind's age moves: those its stages' shapes differ in.
 export function ageKeys(kind) {

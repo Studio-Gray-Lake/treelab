@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { workNow } from './clock.js';
 import { OAK_SHAPE, buildOak, layoutOak } from '../src/oak/oak.js';
 import { agedBy, markedAt, meshOak, shaped, sidesFor, sidesOfTree, tubesOf } from '../src/oak/oakMesh.js';
 
@@ -130,9 +131,9 @@ test('stubs: more as asked, on the trunk and the limbs, pale where they broke', 
 
 test('the usual oak, with its own mesher, is drawn in good time and not too heavily', () => {
   for (const seed of SEEDS) {
-    const start = performance.now();
+    const start = workNow();
     const tree = buildOak(seed, OAK_SHAPE);
-    const ms = performance.now() - start;
+    const ms = workNow() - start;
     const wood = tree.wood.attributes.position.count / 3;
     assert.ok(wood > 3000 && wood < 11000, `seed ${seed}: ${wood} triangles of wood`);
     assert.ok(ms < 600, `seed ${seed}: ${ms.toFixed(0)} ms`);

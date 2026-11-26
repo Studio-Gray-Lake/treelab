@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { workNow } from './clock.js';
 import { OAK_CHOICES, OAK_LIMITS, OAK_SHAPE, buildOak, layoutOak } from '../src/oak/oak.js';
 import { byLimb, lumpsOf, massGeometry } from '../src/oak/leafMass.js';
 import { NOISE_TYPES, USUAL_PATTERN } from '../src/oak/leafNoise.js';
@@ -102,9 +103,9 @@ test('coarser facets are fewer, and the mass still the same size', () => {
 test('an oak with merged masses: far fewer pieces than clusters, the same wood, in good time', () => {
   for (const seed of [11, 22, 33]) {
     const usual = buildOak(seed, OAK_SHAPE);
-    const start = performance.now();
+    const start = workNow();
     const tree = buildOak(seed, merged);
-    const ms = performance.now() - start;
+    const ms = workNow() - start;
     assert.deepEqual(tree.layout.clumps, usual.layout.clumps, `seed ${seed}: the clusters themselves changed`);
     assert.deepEqual(Array.from(tree.wood.attributes.position.array), Array.from(usual.wood.attributes.position.array), `seed ${seed}: the wood changed`);
     const n = tree.layout.clumps.length;
@@ -215,9 +216,9 @@ test('the bits noise pinches off the masses are left out', () => {
 test('an oak with noise in its masses: the same clusters and wood, sound, in good time', () => {
   for (const seed of [11, 22]) {
     const lumps = buildOak(seed, merged);
-    const start = performance.now();
+    const start = workNow();
     const tree = buildOak(seed, { ...merged, noise: 100 });
-    const ms = performance.now() - start;
+    const ms = workNow() - start;
     assert.deepEqual(tree.layout.clumps, lumps.layout.clumps, `seed ${seed}: the clusters themselves changed`);
     assert.deepEqual(Array.from(tree.wood.attributes.position.array), Array.from(lumps.wood.attributes.position.array), `seed ${seed}: the wood changed`);
     assert.equal(soundness(tree.foliage).oneWay, 0, `seed ${seed}: a face the wrong way round`);
@@ -404,9 +405,9 @@ test('an oak with each noise setting at both its ends: the same clusters and woo
     assert.ok(OAK_SHAPE[key] >= lo && OAK_SHAPE[key] <= hi, `${key} starts outside its slider`);
     let changed = 0;
     for (const v of [lo, hi]) {
-      const start = performance.now();
+      const start = workNow();
       const tree = buildOak(11, { ...merged, noise: 200, [key]: v });
-      const ms = performance.now() - start;
+      const ms = workNow() - start;
       assert.deepEqual(tree.layout.clumps, base.layout.clumps, `${key} = ${v}: the clusters themselves changed`);
       assert.deepEqual(Array.from(tree.wood.attributes.position.array), wood, `${key} = ${v}: the wood changed`);
       const p = tree.foliage.attributes.position.array;
@@ -430,4 +431,20 @@ test('an oak with each noise setting at both its ends: the same clusters and woo
   }
   assert.deepEqual(layoutOak(11, { ...merged, noiseType: 2, noiseSize: 5, noiseDetail: 3, noiseBend: 0.5, noiseBillow: 2 }).leaves.pattern, { type: 'ridged', size: 5, detail: 3, bend: 0.5, billow: 2 });
   assert.deepEqual(layoutOak(11, OAK_SHAPE).leaves.pattern, USUAL_PATTERN);
+});
+
+test('across: the leaves of different limbs run together, and each corner still sways with its own limb', () => {
+  const near = [clump([0, 10, 0], 1.6), clump([2.2, 10.3, 0], 1.4, { seed: 9 }), clump([1, 10.2, 2], 1.5, { seed: 11 })];
+  const other = { phase: 3, heading: 4, reach1: 0.03 };
+  const two = [...near, clump([0.6, 10.1, 0.8], 1.5, { seed: 13, limb: other })];
+  const apart = massGeometry(two, { cell: 0.4, rough: 0 }), together = massGeometry(two, { cell: 0.4, rough: 0, across: true });
+  assert.equal(pieces(apart), 2, 'limb by limb: a mass to each limb');
+  assert.equal(pieces(together), 1, 'across: one mass over both limbs');
+  assert.ok(triangles(together) < triangles(apart), 'one mass has less surface than two that cross');
+  const sways = together.attributes.branch, limbs = new Map();
+  for (let i = 0; i < sways.count; i++) { const key = `${sways.getX(i)}|${sways.getZ(i)}`; limbs.set(key, (limbs.get(key) ?? 0) + 1); }
+  assert.deepEqual([...limbs.keys()].sort(), ['1|2', '3|4'], 'a corner moves with the limb of the cluster strongest there');
+  assert.ok(limbs.get('1|2') > limbs.get('3|4'), 'three clusters hold more of the surface than one');
+  // (On one limb alone it changes nothing.)
+  assert.deepEqual(cornersOf(massGeometry(near, { cell: 0.4, rough: 0, across: true })), cornersOf(massGeometry(near, { cell: 0.4, rough: 0 })));
 });

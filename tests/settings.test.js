@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TREE_SHAPES } from '@workshop/treeShapes.js';
 import { KINDS } from '../src/kinds.js';
-import { CHOICES, RANGES, SETTINGS_VERSION, assign, changes, defaultSettings, fromLink, normalize, rangeOf, toFile, toLink } from '../src/settings.js';
+import { FROZEN } from '../src/frozen/index.js';
+import { fromShortLink, toShortLink } from '../src/link.js';
+import { BEFORE, CHOICES, RANGES, SETTINGS_VERSION, assign, changes, defaultSettings, looksLikeSettings, normalize, rangeOf, toFile } from '../src/settings.js';
 
 // Settings files and share links come from other TreeLabs, older and newer,
 // and from people editing them by hand: whatever comes in, TreeLab gets
@@ -42,6 +44,7 @@ test('a file saves everything and loads back the same', () => {
   assert.equal(JSON.parse(file).app, 'TreeLab');
 });
 
+// (The links TreeLab made up to 0.3.1, #s=…: today's are tests/link.test.js.)
 test('a share link carries only the changes, and reads back the same', () => {
   const settings = defaultSettings();
   assert.deepEqual(changes(settings), {});
@@ -49,14 +52,40 @@ test('a share link carries only the changes, and reads back the same', () => {
   settings.forest.size[0] = 0.9;
   settings.wind.speed = 5;
   assert.deepEqual(changes(settings), { tree: { kind: 'pine' }, forest: { size: [0.9, 1.35] }, wind: { speed: 5 } });
-  const link = toLink(settings);
-  assert.match(link, /^[A-Za-z0-9_-]+$/, 'not safe in an address');
+  const link = toShortLink(settings);
+  assert.match(link, /^[A-Za-z0-9_.~-]+$/, 'not safe in an address');
   assert.ok(link.length < 200, `${link.length} characters`);
-  assert.deepEqual(fromLink(link).settings, settings);
+  assert.deepEqual(fromShortLink(link).settings, settings);
+});
+
+test('settings kept from before a setting existed open as they were: a file, a last visit', () => {
+  // (A file holds everything of its day. One saved before the forest had rules says nothing of them: off, not on.)
+  const then = JSON.parse(toFile(FROZEN[3].defaults));
+  assert.ok(!('rules' in then.forest));
+  const { settings, notes } = normalize(then);
+  assert.deepEqual(settings.forest.rules, { ground: 0, room: 0, light: 0 });
+  assert.deepEqual(notes, []);
+  // (One that says them keeps what it says; today's own settings read back as they are.)
+  const said = JSON.parse(toFile(defaultSettings()));
+  said.forest.rules.room = 1.5;
+  assert.equal(normalize(said).settings.forest.rules.room, 1.5);
+  assert.deepEqual(normalize(JSON.parse(toFile(defaultSettings()))).settings, defaultSettings());
+  // (Every line of BEFORE names a setting there is, with a value its slider takes.)
+  for (const [path, value] of Object.entries(BEFORE)) {
+    const at = path.split('.').reduce((node, name) => node?.[name], defaultSettings());
+    assert.equal(typeof at, typeof value, path);
+    if (RANGES[path]) assert.ok(value >= RANGES[path][0] && value <= RANGES[path][1], path);
+  }
+});
+
+test('only something that could be settings is loaded as a file', () => {
+  assert.ok(looksLikeSettings(JSON.parse(toFile(defaultSettings()))));
+  assert.ok(looksLikeSettings({ tree: { seed: 5 } }), 'a hand-written one');
+  for (const other of [{ name: 'treelab', version: '0.3.1', scripts: {} }, {}, [], null, 'tree', 7, { tree: 'oak' }]) assert.ok(!looksLikeSettings(other), JSON.stringify(other));
 });
 
 test('a damaged link gives the defaults and says so', () => {
-  const { settings, notes } = fromLink('not*base64');
+  const { settings, notes } = fromShortLink('not*base64');
   assert.deepEqual(settings, defaultSettings());
   assert.equal(notes.length, 1);
 });

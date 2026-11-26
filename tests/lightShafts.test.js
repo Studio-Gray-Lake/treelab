@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { MIST, createLightShafts, shifts } from '../src/lightShafts.js';
+import { FOG_FROM, MIST, createLightShafts, shifts, sight } from '../src/lightShafts.js';
+import { TIPS } from '../src/tips.js';
+import { SCENES, sceneSettings } from '../src/scenes.js';
 import { createSun } from '../src/sunShadow.js';
 
 // The light shafts (src/lightShafts.js): drawn only when there's something
@@ -108,13 +110,15 @@ test('mist alone is drawn, even with the sun down; without the sun, no shafts', 
   assert.equal(shafts.uniforms.mist.value, shafts.settings.mist);
 });
 
-test('the mist is followed as far as the fog of the scene goes; the light in the haze only with the sun up', () => {
+test('the air is followed as far as the far veil goes; the light in the haze only with the sun up', () => {
   const { scene, sun, shafts } = setUp();
   scene.fog = new THREE.Fog(0xffffff, 30, 420);
   sun.shadow.map = { depthTexture: new THREE.DepthTexture(4, 4) };
   shafts.set({ color: new THREE.Color(1, 1, 1), strength: 1, haze: 0.0005, mist: 0.5 });
   shafts.render();
   assert.equal(shafts.uniforms.reach.value, 420);
+  // (The haze's light is counted beyond the stage too, and hands over to the far veil between its start and its end.)
+  assert.equal(shafts.uniforms.veilFrom.value, 30);
   // (How deep the shadow maps reach along the sun's way: for telling what
   // is far up it, the crowns, from what is near.)
   assert.ok(shafts.uniforms.sunDeep.value.x > 0 && shafts.uniforms.sunDeep.value.y > 0);
@@ -213,4 +217,18 @@ test('the sunlit air is blended over frames: none of the old at first, most of i
   shafts.render();
   assert.equal(shafts.settings.kept, 0);
   assert.equal(renderer.getRenderTarget(), null);
+});
+
+// The words (docs/DESIGN.md): mist while you see 1 km or more through the
+// drops, fog under that. One model, one slider.
+test('mist and fog are one slider: mist while you see 1 km or more, fog under that', () => {
+  assert.ok(Math.abs(sight(FOG_FROM) - 1000) < 1e-6, 'the line is where you see 1 km');
+  assert.ok(Math.abs(FOG_FROM - 0.31) < 0.005);
+  assert.ok(Math.abs(sight(0.2) - 2445) < 5 && Math.abs(sight(0.5) - 391) < 2 && Math.abs(sight(1) - 98) < 1);
+  assert.equal(sight(0), Infinity);
+  // (The tooltip says the same numbers.)
+  for (const said of ['0.2 thin mist (2.4 km)', '0.31 the line', '1 thick fog (100 m)']) assert.ok(TIPS['light.mist'].includes(said), said);
+  // (And the views say fog where it is fog: the misty wood's is.)
+  assert.ok(sceneSettings('misty wood').light.mist > FOG_FROM && SCENES['misty wood'].says.includes('fog on the ground'));
+  assert.ok(sceneSettings('oak and underwood').light.mist < FOG_FROM, 'a thin mist, as its note says');
 });
