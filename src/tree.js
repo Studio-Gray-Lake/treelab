@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { DEFAULT_SHAPES, growKind, leafy, swayKind } from './kinds.js';
 import { shadeCrown } from './crownShade.js';
+import { rootsOf } from './oak/oakMesh.js';
 
 // Trees grown by the workshop's own generator (src/treeShapes.js) and
 // planted as the workshop's forest plants them (src/trees.js, plantTrees):
@@ -45,7 +46,45 @@ export function createMaterials() {
   };
 }
 
-export const triangles = (g) => (g.index ? g.index.count : g.attributes.position.count) / 3;
+export const triangles = (g) => Math.min(g.index ? g.index.count : g.attributes.position.count, g.drawRange.count) / 3;
+
+// --- Roots on the ground they stand on ---------------------------------------------------
+//
+// TreeLab's own kinds are grown with their roots on level ground (./oak/
+// oakMesh.js). Planted on hills (plant's `ground`), each tree is drawn
+// without them, and its roots are drawn again for it alone, over the ground
+// under it: one tree's roots can't be part of a model that many trees share.
+// And each such tree stands on the ground, sunk just so far that the
+// downhill side of its foot is in the ground, and no further.
+//
+// The roots of every tree go into one mesh, in the world's own measures.
+// They don't sway: a root in the ground stays put.
+//
+// Said plainly: there is a limit. Roots are drawn for the trees nearest the
+// middle first, until ROOTS_MOST triangles; the trees further out stand
+// without them. And, as rootsOf says, the ground only drapes a root: it
+// doesn't turn it.
+export const ROOTS_BARE = 0.5;     // how much the slope has a say in which roots show, uphill covered and downhill bare (rootsOf's "bare"): half, so a slope's uphill roots aren't lost
+export const ROOTS_MOST = 600000;  // triangles of roots at most, in a planting: about 1,400 oaks' worth, or 500 ancient oaks' (each 100,000 is 14 MB, and as much again on the graphics card)
+const FOOT_SIDES = 12;             // places round a trunk's foot where the ground is looked at, for how far to sink it
+
+// How far a grown tree of TreeLab's own stands sunk at its record's place
+// (m): its foot is as wide as its trunk spreads toward the ground, and the
+// ground round the foot falls this far below the ground at its middle, at
+// most. On level ground, not at all.
+export function sunk(tree, t, heightAt) {
+  const w = tree.layout.wood;
+  const r = w.girth * (1 + 0.7 * w.flare) * t.size;
+  const middle = heightAt(t.x, t.z);
+  let low = middle;
+  for (let k = 0; k < FOOT_SIDES; k++) {
+    const a = (k / FOOT_SIDES) * Math.PI * 2;
+    low = Math.min(low, heightAt(t.x + Math.cos(a) * r, t.z + Math.sin(a) * r));
+  }
+  return middle - low;
+}
+// (Whether a grown tree's roots can be drawn apart: TreeLab's own kinds, when they have roots.)
+const rootedApart = (tree) => tree.rootsFrom !== undefined && tree.rootsFrom < tree.wood.attributes.position.count;
 
 // Plants trees into a group that stays in the scene, again and again, each
 // time throwing the last planting away.
@@ -85,7 +124,21 @@ export function createPlanter() {
     return m;
   }
 
+  // A grown tree's wood without its roots: the same corners, drawn up to
+  // where its roots begin (made once, when first asked for).
+  function rootless(m) {
+    if (!m.rootless) {
+      const g = new THREE.BufferGeometry();
+      for (const [name, attribute] of Object.entries(m.tree.wood.attributes)) g.setAttribute(name, attribute);
+      g.setDrawRange(0, m.tree.rootsFrom);
+      g.computeBoundingSphere();
+      m.rootless = g;
+    }
+    return m.rootless;
+  }
+
   function forget(m) {
+    m.rootless?.dispose();
     m.tree.wood.dispose();
     m.tree.foliage.dispose();
     models.delete(m.key);
@@ -97,7 +150,13 @@ export function createPlanter() {
   // limbs differ (0 to 1, see mottleModel).
   // shapeOf(kind, variant): the shape that one of a kind's trees is grown
   // from (by default the kind's own: with several ages, each its own).
-  function plant(group, records, shapes = DEFAULT_SHAPES, { colorOf = greenOf, mottle = () => 0, shapeOf = (kind) => shapes[kind] } = {}) {
+  // ground: the hills the trees stand on ({ heightAt(x, z) }), if they
+  // aren't on level ground: then each tree of TreeLab's own kinds is set on
+  // it, sunk as its slope asks (its record's y is set), and given roots of
+  // its own over it (see above). With none, every tree is drawn as grown, at
+  // its record's y. rootsMost: how many triangles of roots at most
+  // (ROOTS_MOST unless said).
+  function plant(group, records, shapes = DEFAULT_SHAPES, { colorOf = greenOf, mottle = () => 0, shapeOf = (kind) => shapes[kind], ground = null, rootsMost = ROOTS_MOST } = {}) {
     // Every tree grown before the last planting is taken down: should one
     // fail to grow, the last trees are left standing.
     const byModel = new Map();
@@ -110,12 +169,16 @@ export function createPlanter() {
     const materials = createMaterials();
 
     const species = {};
+    const rooted = []; // ({ t: a record, m: its grown tree }: the trees whose roots are drawn apart)
     let drawn = 0;
     for (const [m, trees] of byModel) {
       const { tree, kind } = m;
       mottleModel(m, mottle(kind));
+      const apart = ground && rootedApart(tree);
+      if (apart) for (const t of trees) t.y = ground.heightAt(t.x, t.z) - sunk(tree, t, ground.heightAt);
+      const wood = apart ? rootless(m) : tree.wood;
       const meshes = [
-        instanced(tree.wood, materials.bark, trees, null),
+        instanced(wood, materials.bark, trees, null),
         instanced(tree.foliage, leafy(kind) ? materials.leaves : materials.needles, trees, colorOf),
       ];
       for (const t of trees) t.crown = tree.crown * t.size;
@@ -126,13 +189,20 @@ export function createPlanter() {
       entry.meshes.push(...meshes);
       entry.height = Math.max(entry.height, tree.height);
       group.add(...meshes);
-      drawn += trees.length * (triangles(tree.wood) + triangles(tree.foliage));
+      drawn += trees.length * (triangles(wood) + triangles(tree.foliage));
+      if (apart) rooted.push(...trees.map((t) => ({ t, m })));
+    }
+    const roots = rooted.length ? rootsMesh(rooted, ground.heightAt, materials.bark, rootsMost) : null;
+    if (roots) {
+      group.add(roots.mesh);
+      drawn += roots.triangles;
     }
 
     const all = Object.values(species).flatMap((s) => s.trees);
     group.userData = {
       species,
       materials,
+      roots: roots ? { mesh: roots.mesh, trees: roots.trees, left: roots.left } : null,
       count: all.length,
       // Where they stand and how wide their crowns are, for the wind.
       trees: all.map((t) => ({ x: t.x, z: t.z, crown: t.crown })),
@@ -148,7 +218,7 @@ export function createPlanter() {
       }
     }
     round++;
-    return { trees: all.length, models: byModel.size, triangles: drawn, grown, ms };
+    return { trees: all.length, models: byModel.size, triangles: drawn, grown, ms, roots: roots ? { trees: roots.trees.length, left: roots.left } : null };
   }
 
   // Everything planted, and every grown tree, thrown away.
@@ -246,14 +316,82 @@ export function recolor(group, colorOf) {
 }
 
 // The group emptied: its meshes and materials go (the grown trees'
-// geometry stays with the planter).
+// geometry stays with the planter; the roots' was the planting's own).
 function clear(group) {
   for (const mesh of [...group.children]) {
     group.remove(mesh);
+    if (mesh === group.userData.roots?.mesh) mesh.geometry.dispose();
     mesh.dispose();
   }
   for (const material of Object.values(group.userData.materials ?? {})) material.dispose();
   group.userData = {};
+}
+
+// The roots of the trees in `rooted` ([{ t: a record, m: its grown tree }],
+// each already set on the ground), each over the ground under it, nearest
+// the middle first, until `most` triangles, as one mesh: { mesh, trees
+// (those given roots), left (how many were not), triangles }. A click on a
+// root picks its tree: the mesh's userData.treeOf(the triangle hit).
+function rootsMesh(rooted, heightAt, material, most) {
+  const near = [...rooted].sort((a, b) => Math.hypot(a.t.x, a.t.z) - Math.hypot(b.t.x, b.t.z));
+  // (A tree's roots have as many corners on any ground as on level ground: only their heights differ.)
+  const corners = (m) => m.tree.wood.attributes.position.count - m.tree.rootsFrom;
+  const kept = [];
+  let total = 0;
+  for (const r of near) {
+    if ((total + corners(r.m)) / 3 > most) break;
+    kept.push(r);
+    total += corners(r.m);
+  }
+  const position = new Float32Array(total * 3), normal = new Float32Array(total * 3), color = new Float32Array(total * 3), branch = new Float32Array(total * 3);
+  const starts = []; // (each tree's first triangle)
+  let at = 0;
+  for (const { t, m } of kept) {
+    const c = Math.cos(t.turn), s = Math.sin(t.turn);
+    // (The ground in the tree's own measures: from its foot, turned back and sized back.)
+    const ground = (x, z) => (heightAt(t.x + (x * c + z * s) * t.size, t.z + (-x * s + z * c) * t.size) - t.y) / t.size;
+    const g = rootsOf(m.tree.layout, ground, { bare: ROOTS_BARE });
+    const p = g.attributes.position.array, n = g.attributes.normal.array;
+    starts.push(at / 9);
+    for (let i = 0; i < p.length; i += 3) {
+      const x = p[i], y = p[i + 1], z = p[i + 2];
+      position[at + i] = t.x + (x * c + z * s) * t.size;
+      position[at + i + 1] = t.y + y * t.size;
+      position[at + i + 2] = t.z + (-x * s + z * c) * t.size;
+      normal[at + i] = n[i] * c + n[i + 2] * s;
+      normal[at + i + 1] = n[i + 1];
+      normal[at + i + 2] = -n[i] * s + n[i + 2] * c;
+    }
+    color.set(g.attributes.color.array, at);
+    branch.set(g.attributes.branch.array, at);
+    at += p.length;
+    g.dispose();
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
+  geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(color, 3));
+  geometry.setAttribute('branch', new THREE.BufferAttribute(branch, 3));
+  // (The bark's material sways what it draws, src/swayRig.js: the roots are given no bend.)
+  geometry.setAttribute('sway', new THREE.InstancedBufferAttribute(new Float32Array(3), 3));
+  geometry.computeBoundingSphere();
+  // (One instance, where it is: so it is drawn by the same materials, the same ways, as the trees' wood.)
+  const mesh = new THREE.InstancedMesh(geometry, material, 1);
+  mesh.name = 'roots';
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.computeBoundingSphere();
+  const trees = kept.map((r) => r.t);
+  mesh.userData.treeOf = (face) => {
+    let lo = 0, hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= face) lo = mid;
+      else hi = mid - 1;
+    }
+    return trees[lo] ?? null;
+  };
+  return { mesh, trees, left: rooted.length - kept.length, triangles: total / 3 };
 }
 
 // One instanced mesh of `geometry` per tree, turned, sized and placed.

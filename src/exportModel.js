@@ -13,9 +13,11 @@ import { leafy } from './kinds.js';
 //   vertex colours. Trees coloured alike share a mesh: each grown tree's
 //   colours are gathered into at most COLORS (k-means).
 // - instancing: each grown tree's meshes drawn once a tree with glTF's
-//   EXT_mesh_gpu_instancing (smallest; three.js, Babylon.js, Godot, Blender
-//   3.6 and later). Otherwise a node a tree, all sharing the grown trees'
-//   meshes, which every glTF tool reads.
+//   EXT_mesh_gpu_instancing (smallest; three.js, Babylon.js, Blender 3.6 and
+//   later, Unity with glTFast). The extension is required, so a tool without
+//   it refuses the whole file: Godot 4.6 does (tried 26 November 2026).
+//   Otherwise a node a tree, all sharing the grown trees' meshes, which
+//   every glTF tool reads.
 // - The settings and a link that grows the same trees ride along in the
 //   scene's extras; the file is CC0, as LICENSE says.
 
@@ -73,6 +75,17 @@ export async function exportModel({ trees, ground = null, groundHalf = Infinity,
     }
   }
 
+  // The roots of the trees on the hills, each tree's own (src/tree.js): one mesh, where they lie.
+  const roots = trees.userData.roots?.mesh;
+  if (roots) {
+    const g = keep(flat(roots.geometry));
+    g.name = 'roots';
+    const mesh = new THREE.Mesh(g, materials.bark);
+    mesh.name = 'roots';
+    root.add(mesh);
+    count += triangles(g);
+  }
+
   if (ground) {
     const g = keep(cut(ground.geometry, groundHalf));
     g.name = 'ground';
@@ -100,7 +113,12 @@ export async function exportModel({ trees, ground = null, groundHalf = Infinity,
 // times `tint` if given.
 function flat(source, tint = null) {
   const g = new THREE.BufferGeometry();
-  for (const name of ['position', 'color']) if (source.attributes[name]) g.setAttribute(name, source.attributes[name]);
+  // (Only what it draws: a tree on the hills is drawn without the roots it was grown with, src/tree.js.)
+  const from = source.drawRange.start, upTo = Math.min(source.drawRange.count, source.index ? source.index.count : source.attributes.position.count) + from;
+  for (const name of ['position', 'color']) {
+    const a = source.attributes[name];
+    if (a) g.setAttribute(name, source.index ? a : new THREE.BufferAttribute(a.array.slice(from * a.itemSize, upTo * a.itemSize), a.itemSize));
+  }
   if (source.index) g.setIndex(source.index);
   const out = g.index ? g.toNonIndexed() : g.clone();
   out.computeVertexNormals();

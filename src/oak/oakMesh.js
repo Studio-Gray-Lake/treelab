@@ -97,9 +97,9 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 const around = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b)); // (the angle from b round to a, -π to π)
 
-export function meshOak(layout) {
+// A tree's bark, and the lumps of its wood: { bark, lumps }.
+function barkOf(layout) {
   const w = layout.wood;
-  const out = { position: [], color: [], branch: [] };
   const lumps = pushesOf(w.seed);
   // The bark's colour at a height (y, m), darkened by `shade`; r: how thick
   // the wood is there (its radius, m), and at: where on it (for the marks).
@@ -132,13 +132,26 @@ export function meshOak(layout) {
     }
     return color.map((c) => c * shade);
   };
+  return { bark, lumps };
+}
+
+// The tree's roots are drawn last, on level ground: rootsFrom (in what it
+// returns) is how many of the wood's corners come before them, so whoever
+// plants the tree on ground that isn't level can draw the wood without
+// them and draw each tree's own roots on its own ground (rootsOf, below;
+// src/tree.js).
+export function meshOak(layout) {
+  const w = layout.wood;
+  const out = { position: [], color: [], branch: [] };
+  const { bark, lumps } = barkOf(layout);
   const trunk = w.runs.find((run) => run.trunk);
   const look = { bark, lumps, sidesOf: sidesOfTree(w) };
   for (const run of w.runs) runInto(out, run, w, look);
   for (const stub of stubsOf(w, trunk)) stubInto(out, stub, bark);
-  for (const root of w.roots) rootInto(out, root, w, look);
   // (A pine's twigs, bare below their plumes of needles.)
   for (const bough of layout.leaves?.boughs ?? []) if (bough.style === 'brushes') for (const twig of twigsOf(bough)) stickInto(out, twig, bark);
+  const rootsFrom = out.position.length / 3;
+  for (const root of w.roots) rootInto(out, root, w, look);
 
   const wood = geometryOf(out);
   // The leaves: each limb's clusters as masses (./leafMass.js); a kind with needles, twigs with needles.
@@ -158,7 +171,44 @@ export function meshOak(layout) {
   // (How far it reaches is measured on its leaves. A tree that has dropped some or all of them, the season's,
   // reaches as far as its crown does all the same: a bare tree is not a tree of no width.)
   const height = measured.height, reach = layout.oak?.carried < 1 ? Math.max(measured.reach, layout.oak.width / 2) : measured.reach;
-  return { wood, foliage, height, reach, crown: reach * CROWN_SHARE, clumps, layout };
+  return { wood, foliage, height, reach, crown: reach * CROWN_SHARE, clumps, layout, rootsFrom };
+}
+
+// A tree's roots alone, run over a ground of its own: ground(x, z) is how
+// high the ground lies at a place (m, in the tree's own measures: 0 where
+// the foot stands). With no ground they are the roots meshOak draws.
+//
+// Said plainly: the ground only drapes them. Where a root runs, how it
+// wanders and where it forks are grown as on level ground; the ground sets
+// how high each step of it lies, and the root rises and dips about that as
+// it does about level ground. A root that meets something it cannot grow
+// through (a rock) and turns is not drawn. And a leaning tree's roots don't
+// lean with it: they lie on the ground.
+//
+// bare: 0 to 1, how much the slope has a say in what shows. On a slope a
+// tree dams the loose ground above it, and the ground below it is carried
+// off: so a root on the uphill side lies covered, and one on the downhill
+// side bare. At 0 a root rides the same on every side. (A rule of thumb:
+// it goes by which side of the tree a root is on, not by how the ground
+// was worn.)
+export function rootsOf(layout, ground = null, { bare = 0 } = {}) {
+  const w = layout.wood;
+  const out = { position: [], color: [], branch: [] };
+  const { bark, lumps } = barkOf(layout);
+  const slope = ground && bare > 0 ? { bare, foot: ground(0, 0) } : null;
+  for (const root of w.roots) rootInto(out, root, w, { bark, lumps, sidesOf: sidesOfTree(w) }, ground, slope);
+  return geometryOf(out);
+}
+
+// The roots' middle lines, as rootsOf draws them: [[{ p: [x, y, z], r }]], a
+// line for each root and each fork. For measuring them, and for drawings.
+export function rootLinesOf(layout, ground = null, { bare = 0 } = {}) {
+  const w = layout.wood;
+  const out = { position: [], color: [], branch: [], lines: [] };
+  const { bark, lumps } = barkOf(layout);
+  const slope = ground && bare > 0 ? { bare, foot: ground(0, 0) } : null;
+  for (const root of w.roots) rootInto(out, root, w, { bark, lumps, sidesOf: sidesOfTree(w) }, ground, slope);
+  return out.lines.map((line) => line.map(({ p, r }) => ({ p: [...p], r })));
 }
 
 function geometryOf({ position, color, branch }) {
@@ -531,12 +581,22 @@ function stubInto(out, stub, bark) {
 //
 // (Its turns and its dips are a smooth pattern along it, by the metre, so a
 // longer root is the same root carried on.)
-function rootInto(out, root, w, look) {
+// (ground: how high the ground lies at (x, z), if it isn't level: the root
+// rides on it, rising and dipping about it as it does about level ground.)
+// (slope: { bare, foot }: on a slope, how much lower a root lies uphill of
+// the tree and how much higher downhill of it, and the ground's height at
+// the tree's middle. See rootsOf.)
+const BARE_AT = 0.27;  // the ground falling away from the tree this steeply (15 degrees), a root is as bare as it gets; rising as steeply, as covered
+const ROOT_COVERED = 0.9;   // of its own thickness: how much lower a root lies, fully covered
+const ROOT_BARED = 0.6;     // and how much higher, fully bare
+const ROOT_RIDES = 0.75;    // of its own thickness: its middle is never higher above the ground than this (it never leaves it)
+function rootInto(out, root, w, look, ground = null, slope = null) {
   if (!(root.long > 0.05)) return;
   const thick = Math.max(0.02, w.girth * 0.38 * root.strength * (0.6 + 0.8 * Math.min(1.2, w.flare)));
   // (It starts just inside the foot, where the foot's ridge for it ends.)
   const start = w.girth * (1 + w.flare * (0.7 + 0.9 * root.strength)) * 0.75;
-  const flat = (y, shade) => look.bark(Math.max(0, y), shade);
+  // (Its colour is the foot's: on a ground of its own, whatever height that carries it to.)
+  const flat = (y, shade) => look.bark(ground ? 0 : Math.max(0, y), shade);
   const sidesOf = look.sidesOf ?? sidesFor;
   const draw = ({ x, z, angle, long, thick: r0, seed, forks }) => {
     const pattern = pushesOf(seed), push = [0, 0, 0];
@@ -550,12 +610,20 @@ function rootInto(out, root, w, look) {
       // (As it leaves the foot it's where the foot's ridge is, and heads as it does; then it wanders, rises and dips; then under.)
       const free = clamp(t / 0.15), under = clamp((t - 0.68) / 0.32);
       const heading = angle + 1.1 * free * push[0];
-      const y = -0.35 * r + free * 1.8 * r * push[1] - (2.6 * last + 0.08) * under * under * (3 - 2 * under);
+      const floor = ground ? ground(x, z) : 0;
+      let rides = -0.35 * r + free * 1.8 * r * push[1];
+      if (slope) {
+        // (How steeply the ground falls from the tree's middle to here: downhill of the tree, bare; uphill, covered.)
+        const falls = clamp((slope.foot - floor) / (Math.max(0.1, Math.hypot(x, z)) * BARE_AT), -1, 1);
+        rides = Math.min(ROOT_RIDES * r, rides + slope.bare * free * r * (falls > 0 ? ROOT_BARED : ROOT_COVERED) * falls);
+      }
+      const y = floor + rides - (2.6 * last + 0.08) * under * under * (3 - 2 * under);
       points.push({ p: [x, y, z], r, reach: 0, phase: 0, heading: 0 });
       if (forks && !fork && t >= forks.at) fork = { x, z, angle: heading + forks.turn, long: (1 - t) * long * 0.75, thick: r * 0.62, seed: seed + 1 };
       x += Math.cos(heading) * (long / steps);
       z += Math.sin(heading) * (long / steps);
     }
+    out.lines?.push(points); // (its middle line, for whoever asks: rootLinesOf)
     tubeInto(out, points, Math.max(5, sidesOf(r0)), { bark: flat, lumps: look.lumps, shape: null, w, trunk: false, capped: true });
     if (fork && fork.long > 0.4) draw(fork);
   };

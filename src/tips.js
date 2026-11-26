@@ -111,7 +111,7 @@ export const TIPS = {
   'action.take': 'Download a picture of the view as a PNG (without the panels).',
   'action.share': 'Share a picture of the view, with a link back to it.',
   'model.ground': 'Include the forest\'s ground in the model (cut to the forest).',
-  'model.instancing': 'Instanced is the smallest file (three.js, Babylon.js, Godot, Blender 3.6+). One node a tree opens in every 3D tool.',
+  'model.instancing': 'Instanced is the smallest file (three.js, Babylon.js, Blender 3.6+, Unity with glTFast). Godot 4.6 can\'t open it. One node a tree opens in every 3D tool.',
   'action.glb': 'Download the trees shown as a .glb 3D model, standing still. Yours to use (CC0).',
   'action.startOver': 'Put every setting back to TreeLab\'s defaults.',
 

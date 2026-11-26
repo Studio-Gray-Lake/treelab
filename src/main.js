@@ -49,6 +49,7 @@ import { OUTLINE, outlineOf } from './oak/oak.js';
 import { attachTooltips } from './tooltip.js';
 import { shapeTip, tip } from './tips.js';
 import { ABOUT, showsWelcome, turnWelcomeOff } from './welcome.js';
+import { KOFI, KOFI_BUTTON, markSeen, showsSupport, supportDelay, supportPlace, turnSupportOff } from './support.js';
 import { versionLabel, versionSays } from './version.js';
 import { NEWS, RELEASES, dayOf } from './changelog.js';
 
@@ -932,7 +933,8 @@ const growForest = safely(function growForest({ frame = false } = {}) {
     r.age = aged.get(r.kind)?.ages[r.variant % n] ?? settings.shapes[r.kind].age;
   }
   const shapeOf = (kind, variant) => inSeason(kind, variant, variant >= n ? woodShape(kind, variant - n) : aged.get(kind)?.shapes[variant] ?? settings.shapes[kind]);
-  const numbers = planters.forest.plant(woods, records, settings.shapes, { colorOf, mottle, shapeOf });
+  // (On the hills: TreeLab's own kinds each set on the ground under it, with roots of its own over it. src/tree.js.)
+  const numbers = planters.forest.plant(woods, records, settings.shapes, { colorOf, mottle, shapeOf, ground: terrain });
   keepSelection('forest', records);
   trunks = trunksOf(woods); // (what the figure walks round)
   wireframe(woods);
@@ -973,6 +975,7 @@ const growForest = safely(function growForest({ frame = false } = {}) {
     ...(report.thinnedTo ? [['thinned', `to ${count(report.thinnedTo)} a hectare (at most ${count(MAX_TREES)} trees)`]] : []),
     ...(report.capped ? [['over the cap', `${count(report.capped)} left out`]] : []),
     ['trees grown', `${numbers.models} shapes, ${numbers.grown} new`],
+    ...(numbers.roots?.left ? [['roots', `drawn for the ${count(numbers.roots.trees)} trees nearest the middle; ${count(numbers.roots.left)} further out stand without them`]] : []),
     ['triangles', count(numbers.triangles)],
     ...(numbers.triangles > HEAVY ? [['heavy', 'fewer trees or simpler shapes will run smoother']] : []),
     ['planted in', `${ms.toFixed(0)} ms${newGround ? ' (new hills)' : ''}`],
@@ -2178,7 +2181,8 @@ function treeAt(e) {
   raycaster.setFromCamera(pointer, camera);
   const group = settings.tab === 'tree' ? garden : woods;
   const hit = raycaster.intersectObjects(group.children, false)[0];
-  return hit?.object.userData.trees?.[hit.instanceId] ?? null;
+  // (A tree's wood and leaves are each an instance; the forest's roots are one mesh, and the triangle hit says whose.)
+  return hit?.object.userData.treeOf?.(hit.faceIndex) ?? hit?.object.userData.trees?.[hit.instanceId] ?? null;
 }
 renderer.domElement.addEventListener('dblclick', (e) => {
   if (e.shiftKey) return; // (with Shift held, two clicks select and no more)
@@ -2261,6 +2265,49 @@ if (innerWidth > 0 && innerWidth < 700) {
   if (showsWelcome({ hash: location.hash })) {
     card.showModal?.();
     ok.focus();
+  }
+}
+
+// The support card (src/support.js): once a visit, after a few minutes
+// with the page in view and none of TreeLab's own cards open, in the
+// corner, clear of the settings. Its three buttons each put it away.
+{
+  const card = document.getElementById('support');
+  const panel = document.getElementById('panel');
+  document.getElementById('support-kofi').href = KOFI;
+  document.getElementById('support-kofi-button').src = KOFI_BUTTON;
+  const place = () => {
+    const { right, bottom } = supportPlace(panel.getBoundingClientRect(), innerWidth, innerHeight);
+    card.style.setProperty('--support-right', `${right}px`);
+    card.style.setProperty('--support-bottom', `${bottom}px`);
+  };
+  // (Placed again when the window or the panel changes size: the panel's edge can be dragged, and it folds.)
+  const watch = typeof ResizeObserver === 'function' ? new ResizeObserver(place) : null;
+  const away = () => {
+    card.hidden = true;
+    removeEventListener('resize', place);
+    watch?.disconnect();
+  };
+  document.getElementById('support-kofi').addEventListener('click', away);
+  document.getElementById('support-later').addEventListener('click', away);
+  document.getElementById('support-never').addEventListener('click', () => {
+    turnSupportOff(); // (where the browser keeps nothing, it may show again on a later visit)
+    away();
+  });
+  if (showsSupport()) {
+    const delay = supportDelay(location.search);
+    let inView = 0;
+    const clock = setInterval(() => {
+      if (document.visibilityState !== 'visible' || document.querySelector('dialog[open]')) return;
+      if (++inView < delay) return;
+      clearInterval(clock);
+      if (!showsSupport()) return; // (turned off meanwhile, in another tab)
+      markSeen();
+      place();
+      addEventListener('resize', place);
+      watch?.observe(panel);
+      card.hidden = false;
+    }, 1000);
   }
 }
 

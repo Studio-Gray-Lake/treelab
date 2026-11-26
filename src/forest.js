@@ -39,7 +39,7 @@ import { fitOf, siteOf, standingOf } from './site.js';
 //
 // The same settings and ground always give the same forest.
 
-const SINK = 0.3; // m a tree stands sunk into the ground, as in the workshop (it may slope under the trunk)
+const SINK = 0.3; // m a tree stands sunk into the ground, as in the workshop (it may slope under the trunk). TreeLab's own kinds are set on the ground again where they are planted, each sunk as far as its own slope asks (src/tree.js: sunk)
 
 // standing(kind, variant): how tall a tree of that kind stands and how far
 // its crown reaches, at size 1 ({ height, crown }, m: src/site.js standOf):

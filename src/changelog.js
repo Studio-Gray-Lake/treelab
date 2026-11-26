@@ -16,6 +16,17 @@ export const NEWS = 'https://studiograylake.com/news.html';
 
 export const RELEASES = [
   {
+    version: '0.4.1',
+    date: '2026-11-26',
+    name: 'Roots on the hills',
+    post: null,
+    changes: [
+      'On the hills, each tree\'s roots lie on the ground under it, where before they were mostly buried',
+      'A small card in the corner, once a visit and after a few minutes, asks if you\'d like to support us on Ko-fi. "Never show this again" means never',
+      'The model download says Godot 4.6 can\'t open an instanced file: use "one node a tree"',
+    ],
+  },
+  {
     version: '0.4',
     date: '2026-11-26',
     name: 'The English wood',

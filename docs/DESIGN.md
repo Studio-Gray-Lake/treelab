@@ -12,7 +12,7 @@ The companion to [FOUNDATIONS.md](FOUNDATIONS.md): that page says what TreeLab h
 
 - **Settings** are one plain object (`src/settings.js`). Everything on screen follows from it. A link or a file is that object written down.
 - **Growing** turns a kind, a seed and a shape into a tree's wood and leaves (`src/oak/`, `src/kinds.js`).
-- **Planting** decides which trees stand where (`src/garden.js` for the Tree tab, `src/forest.js` and `src/site.js` for the forest) and draws each grown tree as many times as it stands (`src/tree.js`).
+- **Planting** decides which trees stand where (`src/garden.js` for the Tree tab, `src/forest.js` and `src/site.js` for the forest) and draws each grown tree as many times as it stands (`src/tree.js`). What answers to the ground under one tree can't be part of a grown tree that many share: on the hills each tree's roots are drawn for it alone, over its own ground, and its trunk is sunk as its own slope asks.
 - **Lighting** is the sun, its shadows, the sky's light among the trees, the shade inside crowns and the mist (`src/light.js` and the modules round it).
 - **The page** (`src/main.js`) wires the panel to the settings and the settings to the rest.
 
