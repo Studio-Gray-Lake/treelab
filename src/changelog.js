@@ -16,6 +16,18 @@ export const NEWS = 'https://studiograylake.com/news.html';
 
 export const RELEASES = [
   {
+    version: '0.4.2',
+    date: '2026-11-27',
+    name: 'One tree, a grid or a forest',
+    post: null,
+    changes: [
+      'Three buttons at the top choose what\'s shown: one tree, a grid of them, or a forest',
+      'The tree is on the left (its kind, seed and variant, then its shape); the world is on the right: the scene, the ground, the sky, the wind, you, and save and share',
+      'One tree can stand on the hills, its roots lying on them',
+      'The Ko-fi card asks in the middle, as the page opens and once more a few minutes later, then not again that visit; not as a shared link opens',
+    ],
+  },
+  {
     version: '0.4.1',
     date: '2026-11-26',
     name: 'Roots on the hills',

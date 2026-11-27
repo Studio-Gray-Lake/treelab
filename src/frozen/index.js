@@ -14,5 +14,6 @@ import v10 from './v10.js';
 import v11 from './v11.js';
 import v12 from './v12.js';
 import v13 from './v13.js';
+import v14 from './v14.js';
 
-export const FROZEN = { 0: v0, 1: v1, 2: v2, 3: v3, 4: v4, 5: v5, 6: v6, 7: v7, 8: v8, 9: v9, 10: v10, 11: v11, 12: v12, 13: v13 };
+export const FROZEN = { 0: v0, 1: v1, 2: v2, 3: v3, 4: v4, 5: v5, 6: v6, 7: v7, 8: v8, 9: v9, 10: v10, 11: v11, 12: v12, 13: v13, 14: v14 };

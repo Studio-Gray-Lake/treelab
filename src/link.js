@@ -49,7 +49,7 @@ import { BEFORE, assign, changes, defaultSettings, normalize, older } from './se
 // What is kept is every setting. The code that grows a tree from its
 // settings is not kept: where that changes, the same settings grow the
 // tree as today's TreeLab grows it.
-export const LINK_VERSION = 13;
+export const LINK_VERSION = 14;
 
 // What this TreeLab's links start from: its defaults, each starting view
 // (as what it changes of the defaults), each kind's ready-made shapes (as

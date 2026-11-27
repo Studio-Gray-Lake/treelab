@@ -48,8 +48,8 @@ import { closedShape, hemmedIn } from './woodGrown.js';
 import { OUTLINE, outlineOf } from './oak/oak.js';
 import { attachTooltips } from './tooltip.js';
 import { shapeTip, tip } from './tips.js';
-import { ABOUT, showsWelcome, turnWelcomeOff } from './welcome.js';
-import { KOFI, KOFI_BUTTON, markSeen, showsSupport, supportDelay, supportPlace, turnSupportOff } from './support.js';
+import { ABOUT, opensOnAView, showsWelcome, turnWelcomeOff } from './welcome.js';
+import { KOFI, KOFI_CUP, PLAIN_LINE, lineFor, askDue, asksMade, setAsksMade, supportDelay, supportIsOff, turnSupportOff } from './support.js';
 import { versionLabel, versionSays } from './version.js';
 import { NEWS, RELEASES, dayOf } from './changelog.js';
 
@@ -471,7 +471,7 @@ function fitStage(center, radius, top) {
   sun.shadow.stage.center.z -= (sunDirection.z / flat) * (reach / 2);
   sun.shadow.stage.center.y += top / 2;
   sun.shadow.stage.radius = Math.hypot(half, top / 2 + 2);
-  shafts.setGround(settings.tab === 'forest' ? terrain : null); // (the mist lies on the hills; the Tree tab's ground is flat)
+  shafts.setGround(hillsShown()); // (the mist lies on the hills; on level ground, on level ground)
   // (Each cascade's map: twice as fine for a big stage, where the GPU takes a
   // texture 8192 wide.)
   const size = half > 40 && renderer.capabilities.maxTextureSize >= 8192 ? 4096 : 2048;
@@ -567,6 +567,25 @@ scene.add(forestStage);
 let terrain = null;
 let terrainStamp = '';
 let edge = null;
+
+// One tree on the hills (its ground: hills): it stands on the forest's own
+// hills, at their middle, its roots lying on them, with the forest's trees
+// and edge hidden. The grid always stands on level ground, so its trees
+// compare fairly.
+const onHills = () => settings.tree.ground === 'hills' && settings.tree.show !== 'grid';
+// The hills under what's shown, if it stands on them: the forest's, or one tree's on them. (Else level ground.)
+const hillsShown = () => ((shown ?? settings.tab) === 'forest' || ((shown ?? settings.tab) === 'tree' && onHills()) ? terrain : null);
+// The stages for what's shown: one tree's level ground and grid, or the hills (with the forest on them, or not).
+function showStages() {
+  const tab = shown ?? settings.tab;
+  const hills = tab === 'tree' && onHills();
+  treeStage.visible = tab === 'tree';
+  forestStage.visible = tab === 'forest' || hills;
+  woods.visible = tab === 'forest';
+  if (edge) edge.visible = tab === 'forest' && settings.view.edge;
+  flat.mesh.visible = !hills;
+  if (grid) grid.visible = settings.view.grid && !hills;
+}
 
 function setTerrain() {
   // (Big enough for the forest: its hills whole under every tree.)
@@ -838,6 +857,9 @@ function recolorAll() {
 }
 const wireframe = (group) => Object.values(group.userData.materials ?? {}).forEach((m) => (m.wireframe = settings.view.wireframe));
 
+// How long the trees took to grow, as the info card says it: none grown (each already was, and was only placed again, as when one tree is set on the hills) says so.
+const grownIn = (numbers) => (numbers.grown ? `${numbers.ms.toFixed(1)} ms` : 'already grown');
+
 // The Tree tab's trees.
 let gardenSize = null;
 const personByTree = new THREE.Vector3(-2, 0, 0.6); // where the figure stands by them
@@ -846,7 +868,13 @@ const growTree = safely(function growTree({ frame = false } = {}) {
   // (One shape for a tree, asked for the same way each time: grown once, by the grid that spaces them or by the planter.)
   const shapeOf = (kind, variant) => inSeason(kind, variant, settings.shapes[kind]);
   const layout = gardenRecords(settings.tree, settings.shapes, planter, shapeOf);
-  const numbers = planter.plant(garden, layout.records, settings.shapes, { colorOf, mottle, shapeOf });
+  // On the hills: the forest's hills (made if they aren't yet; if they changed, the forest is grown again when next
+  // shown), each tree on the ground under it. The planter sets TreeLab's own kinds on their roots; the workshop's are
+  // sunk 0.3 m, as in the forest.
+  const hills = onHills();
+  if (hills && setTerrain()) dirty.forest = true;
+  if (hills) for (const r of layout.records) r.y = terrain.heightAt(r.x, r.z) - 0.3;
+  const numbers = planter.plant(garden, layout.records, settings.shapes, { colorOf, mottle, shapeOf, ground: hills ? terrain : null });
   keepSelection('tree', layout.records);
   wireframe(garden);
   clearLabels();
@@ -861,20 +889,22 @@ const growTree = safely(function growTree({ frame = false } = {}) {
   }
   setGrid(Math.max(20, 2 * Math.ceil(layout.extent + 2)));
   gardenSize = layout;
-  rig.bind({ trees: garden, terrain: flat, warmUp: Math.min(20, 2000 / layout.records.length) });
+  rig.bind({ trees: garden, terrain: hills ? terrain : flat, warmUp: Math.min(20, 2000 / layout.records.length) });
   shadeSoon();
   dirty.tree = false;
+  showStages();
 
   const one = settings.tree.show !== 'grid';
   const first = planter.model(layout.records[0].kind, layout.records[0].seed, layout.records[0].variant, inSeason(layout.records[0].kind, layout.records[0].variant, settings.shapes[layout.records[0].kind])).tree;
   stats.tree = one
-    ? [['height', metres(first.height)], ['reach', metres(first.reach)], ['crown', metres(first.crown)], ['triangles', count(numbers.triangles)], ['grown in', `${numbers.ms.toFixed(1)} ms`]]
-    : [['trees', count(numbers.trees)], ['tallest', metres(layout.tallest)], ['spacing', metres(layout.spacing)], ['triangles', count(numbers.triangles)], ['grown in', `${numbers.ms.toFixed(1)} ms`]];
+    ? [['height', metres(first.height)], ['reach', metres(first.reach)], ['crown', metres(first.crown)], ['triangles', count(numbers.triangles)], ['grown in', grownIn(numbers)]]
+    : [['trees', count(numbers.trees)], ['tallest', metres(layout.tallest)], ['spacing', metres(layout.spacing)], ['triangles', count(numbers.triangles)], ['grown in', grownIn(numbers)]];
   // (On the tree's left: the panel covers the right of the view.)
   personByTree.set(one ? -Math.max(2, first.reach + 1) : layout.records[0].x - layout.spacing / 2, 0, one ? 0.6 : layout.records[0].z);
+  if (hills) personByTree.y = terrain.heightAt(personByTree.x, personByTree.z);
   if (settings.tab === 'tree') {
     person.position.copy(personByTree);
-    fitStage(new THREE.Vector3(), layout.extent, layout.tallest);
+    fitTreeStage();
     showStats();
   }
   showMarks();
@@ -994,6 +1024,11 @@ const growForest = safely(function growForest({ frame = false } = {}) {
 // stands above the ground at its middle (trees on a hill stand higher), so
 // the sun's shadows and the mist take in the crowns' tops and the long
 // shadows they throw.
+// One tree's or the grid's stage, on the ground they stand on.
+function fitTreeStage() {
+  const base = onHills() ? terrain.heightAt(0, 0) : 0;
+  fitStage(new THREE.Vector3(0, base, 0), gardenSize.extent, gardenSize.tallest);
+}
 function fitForestStage() {
   const base = terrain.heightAt(0, 0);
   const reach = settings.forest.radius * (settings.forest.area === 'square' ? Math.SQRT2 : 1);
@@ -1028,7 +1063,7 @@ function frameView() {
   if (settings.tab === 'tree') {
     const { extent, tallest } = gardenSize;
     const distance = Math.max((tallest * 0.62) / tanV, (extent * 1.15) / (tanV * camera.aspect), 6);
-    controls.target.set(0, tallest * 0.45, 0);
+    controls.target.set(0, (onHills() ? terrain.heightAt(0, 0) : 0) + tallest * 0.45, 0);
     camera.position.copy(controls.target).addScaledVector(tilt, distance + (settings.tree.show === 'grid' ? extent * 0.5 : 0));
   } else if (standing) {
     // Among the trees, facing the sun (src/stand.js): the figure there,
@@ -1171,7 +1206,7 @@ function poseFigure(dt) {
     person.rotation.y = walker.heading;
   } else Object.assign(still, { x: person.position.x, y: person.position.y, z: person.position.z, heading: person.rotation.y });
   person.visible = standing ? !settings.view.eyes : settings.view.person;
-  body?.update(dt, standing ? walker : still, shown === 'forest' && terrain ? terrain : null);
+  body?.update(dt, standing ? walker : still, hillsShown());
 }
 renderer.domElement.addEventListener('wheel', (e) => {
   if (!standing || !settings.view.eyes) return; // (behind the figure, the wheel moves the camera nearer or further)
@@ -1181,32 +1216,47 @@ renderer.domElement.addEventListener('wheel', (e) => {
 addEventListener('keyup', (e) => held.delete(e.code));
 addEventListener('blur', () => held.clear());
 
-// --- The tabs ------------------------------------------------------------------------
+// --- What's shown --------------------------------------------------------------------
 
-const tabButtons = [...document.querySelectorAll('#tabs button[data-tab]')];
+// Three buttons at the top of the settings: one tree, a grid of them, or a
+// forest. Underneath they are the settings they always were (the tab, "tree"
+// or "forest", and the tree tab's "show", one tree or a grid), so links are
+// as they were.
+const modeButtons = [...document.querySelectorAll('#tabs button[data-mode]')];
+const modeOf = () => ((shown ?? settings.tab) === 'forest' ? 'forest' : settings.tree.show === 'grid' ? 'grid' : 'one');
+function showMode(mode) {
+  const tab = mode === 'forest' ? 'forest' : 'tree';
+  const show = mode === 'grid' ? 'grid' : 'one tree';
+  const changed = tab === 'tree' && settings.tree.show !== show;
+  if (changed) {
+    settings.tree.show = show;
+    if (shown === 'tree') select(null); // (the selected tree was one of the other trees)
+    dirty.tree = true;
+  }
+  showTab(tab, { frame: changed });
+}
 let shown = null; // the tab on screen
 function showTab(tab, { frame = false, keepView = true } = {}) {
   if (shown && shown !== tab && keepView) views[shown] = { position: camera.position.clone(), target: controls.target.clone(), standing };
   if (shown !== tab) select(null); // (a selected tree is one of the tab's it was picked on)
   shown = tab;
   settings.tab = tab;
-  for (const b of tabButtons) b.setAttribute('aria-selected', String(b.dataset.tab === tab));
-  treeStage.visible = tab === 'tree';
-  forestStage.visible = tab === 'forest';
+  showStages();
   for (const f of folders.tree) f.show(tab === 'tree');
   for (const f of folders.forest) f.show(tab === 'forest');
-  shapeKind.show(tab === 'forest');
-  gridRow.show(tab === 'tree');
+  for (const c of treeOnlyRows) c.show(tab === 'tree');
+  showGridRows();
+  showGroundRows();
   edgeRow.show(tab === 'forest');
   amongRow.show(tab === 'forest');
   eyesRow.show(tab === 'forest');
   const firstTime = !views[tab];
   if (dirty[tab]) regrow();
-  else if (tab === 'tree') rig.bind({ trees: garden, terrain: flat, warmUp: Math.min(20, 2000 / Math.max(1, garden.userData.count)) });
+  else if (tab === 'tree') rig.bind({ trees: garden, terrain: onHills() ? terrain : flat, warmUp: Math.min(20, 2000 / Math.max(1, garden.userData.count)) });
   else rig.bind({ trees: woods, terrain, canopy: woods.userData.trees, warmUp: Math.min(20, 4000 / Math.max(1, woods.userData.count)) });
   shadeSoon();
   if (tab === 'tree') {
-    fitStage(new THREE.Vector3(), gardenSize.extent, gardenSize.tallest);
+    fitTreeStage();
     person.position.copy(personByTree); // (back from the forest's middle)
   } else {
     fitForestStage();
@@ -1223,7 +1273,7 @@ function showTab(tab, { frame = false, keepView = true } = {}) {
   showKind(); // (the left panel: this tab's kind)
   remember();
 }
-for (const b of tabButtons) b.addEventListener('click', () => showTab(b.dataset.tab));
+for (const b of modeButtons) b.addEventListener('click', () => showMode(b.dataset.mode));
 
 // --- The panel ----------------------------------------------------------------------
 
@@ -1330,8 +1380,8 @@ const foldBoth = () => {
 // [data-tint]), so one tells from the next: the panel's own folders, and
 // the sections of a tree's shape (src/sections.js).
 const TINTS = {
-  tree: 'leaf', show: 'slate', forest: 'wood', pattern: 'wood', 'groves and clearings': 'wood', 'where trees grow': 'wood', mix: 'leaf', ground: 'earth',
-  light: 'sun', 'season and colour': 'autumn', sway: 'air', wind: 'air', view: 'slate', 'save and share': 'paper',
+  scene: 'wood', pattern: 'wood', 'groves and clearings': 'wood', 'where trees grow': 'wood', mix: 'leaf', ground: 'earth',
+  sky: 'sun', light: 'sun', 'season and colour': 'autumn', wind: 'air', 'the wind': 'air', you: 'slate', 'save and share': 'paper',
 };
 const SECTION_TINTS = { size: 'slate', trunk: 'bark', roots: 'earth', limbs: 'wood', crown: 'leaf', movement: 'air', other: 'paper' };
 const tint = (folder, name) => {
@@ -1400,28 +1450,12 @@ function addRange(folder, object, key, name, [lo, hi, step], what) {
   return watch(new RangeController(folder, object, key, lo, hi, step).name(name), what);
 }
 
-// Tree tab: the tree.
-const treeFolder = gui.addFolder('tree');
-folders.tree.push(treeFolder);
-watch(treeFolder.add(settings.tree, 'kind', KIND_OPTIONS), 'both', { frame: true, also: () => showKind() });
-watch(treeFolder.add(settings.tree, 'seed', ...range('tree.seed')), 'both');
-watch(treeFolder.add(settings.tree, 'variant', ...range('tree.variant')), 'tree');
-treeFolder.add({
-  newSeed() {
-    settings.tree.seed = 1 + Math.floor(Math.random() * 999);
-    refreshPanel();
-    dirty.forest = true;
-    growTree();
-    remember();
-  },
-}, 'newSeed').name('new seed');
-watch(treeFolder.add(settings.tree, 'tint', ...range('tree.tint')).name('tint (greens)'), 'tree');
+// (The tree's kind, seed and variant are on the left, at the top of its kind's panel: see shapeKind.)
 
-// Tree tab: one tree or a grid.
-const showFolder = gui.addFolder('show');
-folders.tree.push(showFolder);
+// The grid's scene: how many trees, and how they differ. (Its own section,
+// shown only with the grid; "show: one tree or grid" is the buttons at the top.)
+const showFolder = gui.addFolder('scene');
 const gridRows = [];
-watch(showFolder.add(settings.tree, 'show', CHOICES['tree.show']).name('show'), 'tree', { frame: true, also: () => showGridRows() });
 gridRows.push(watch(showFolder.add(settings.tree, 'rows', ...range('tree.rows')), 'tree', { frame: true }));
 gridRows.push(watch(showFolder.add(settings.tree, 'cols', ...range('tree.cols')).name('columns'), 'tree', { frame: true }));
 gridRows.push(watch(showFolder.add(settings.tree, 'vary', CHOICES['tree.vary']).name('vary'), 'tree'));
@@ -1440,12 +1474,16 @@ function addPersonRow(folder) {
   personRows.push(row);
   return row;
 }
-addPersonRow(showFolder);
-const showGridRows = () => gridRows.forEach((c) => c.show(settings.tree.show === 'grid'));
+// What the buttons at the top say, and the grid's section shown with the grid alone.
+function showGridRows() {
+  showFolder.show((shown ?? settings.tab) === 'tree' && settings.tree.show === 'grid');
+  for (const b of modeButtons) b.setAttribute('aria-selected', String(b.dataset.mode === modeOf()));
+  showGroundRows(); // (one tree's ground choice goes with one tree)
+}
 
 // Forest tab: where the trees stand.
 const forestReadout = { trees: '' };
-const forestFolder = gui.addFolder('forest');
+const forestFolder = gui.addFolder('scene');
 folders.forest.push(forestFolder);
 forestFolder.add(forestReadout, 'trees').name('holds').disable().listen();
 watch(forestFolder.add(settings.forest, 'seed', ...range('forest.seed')).name('seed (where they stand)'), 'forest');
@@ -1462,7 +1500,6 @@ const radiusRow = watch(forestFolder.add(settings.forest, 'radius', ...range('fo
 const nameRadius = () => radiusRow.name(settings.forest.area === 'circle' ? 'radius R (m)' : 'half its side (m)');
 const densityRow = watch(forestFolder.add(settings.forest, 'density', ...range('forest.density')).name('seeds per hectare'), 'forest');
 watch(forestFolder.add(settings.forest, 'closes').name('crowns close in a wood'), 'forest');
-addPersonRow(forestFolder);
 // The forest from among its trees, or from above (src/stand.js).
 const amongRow = forestFolder.add(settings.view, 'stand').name('walk among the trees').onChange((on) => {
   frameView();
@@ -1581,21 +1618,52 @@ const standRow = watch(mixFolder.add(settings.forest, 'standSize', ...range('for
 watch(mixFolder.add(settings.forest, 'variants', ...range('forest.variants')).name('variants a kind'), 'forest');
 addRange(mixFolder, settings.forest, 'size', 'size', range('forest.size'), 'forest');
 
+// The ground: the hills in the forest; flat, with its metre grid, under one tree or a grid.
 const groundFolder = gui.addFolder('ground').close();
-folders.forest.push(groundFolder);
-watch(groundFolder.add(settings.terrain, 'seed', ...range('terrain.seed')).name('seed (which hills)'), 'forest');
-groundFolder.add({
-  newHills() {
-    settings.terrain.seed = 1 + Math.floor(Math.random() * 999);
-    refreshPanel();
-    growForest();
-    remember();
-  },
-}, 'newHills').name('new hills');
-watch(groundFolder.add(settings.terrain, 'height', ...range('terrain.height')).name('hills rise (m, 0 flat)'), 'forest');
-watch(groundFolder.add(settings.terrain, 'size', ...range('terrain.size')).name('hill size (m)'), 'forest');
-watch(groundFolder.add(settings.terrain, 'roughness', ...range('terrain.roughness')), 'forest');
-watch(groundFolder.add(settings.forest, 'maxSlope', ...range('forest.maxSlope')).name('steepest slope trees grow on (°)'), 'forest');
+// One tree's ground: level, or the forest's hills (the grid is always level).
+const groundChoice = groundFolder.add(settings.tree, 'ground', CHOICES['tree.ground']).onChange(() => {
+  select(null);
+  showGroundRows();
+  growTree({ frame: true });
+  remember();
+});
+// The hills are the forest's, and one tree's when it stands on them: a change grows whichever is shown.
+const growOnHills = () => {
+  if (shown === 'tree') {
+    dirty.forest = true;
+    if (onHills()) growTree();
+  } else growForest();
+};
+const hillsRow = (row) => {
+  row.onChange(remember);
+  row.onFinishChange(growOnHills);
+  return row;
+};
+const terrainRows = [
+  hillsRow(groundFolder.add(settings.terrain, 'seed', ...range('terrain.seed')).name('seed (which hills)')),
+  groundFolder.add({
+    newHills() {
+      settings.terrain.seed = 1 + Math.floor(Math.random() * 999);
+      refreshPanel();
+      growOnHills();
+      remember();
+    },
+  }, 'newHills').name('new hills'),
+  hillsRow(groundFolder.add(settings.terrain, 'height', ...range('terrain.height')).name('hills rise (m, 0 flat)')),
+  hillsRow(groundFolder.add(settings.terrain, 'size', ...range('terrain.size')).name('hill size (m)')),
+  hillsRow(groundFolder.add(settings.terrain, 'roughness', ...range('terrain.roughness'))),
+];
+const slopeRow = watch(groundFolder.add(settings.forest, 'maxSlope', ...range('forest.maxSlope')).name('steepest slope trees grow on (°)'), 'forest');
+// The ground's rows for what's shown: the hills' in the forest or under one tree on them, the choice with one tree,
+// the metre grid on level ground, the steepest slope in the forest.
+function showGroundRows() {
+  const tab = shown ?? settings.tab;
+  const hills = tab === 'forest' || (tab === 'tree' && onHills());
+  for (const c of terrainRows) c.show(hills);
+  slopeRow.show(tab === 'forest');
+  groundChoice.show(tab === 'tree' && settings.tree.show !== 'grid');
+  gridRow.show(tab === 'tree' && !onHills());
+}
 
 // Both tabs, on the left of the screen: one kind's shape, in a panel of its
 // own. Which kind:
@@ -1620,7 +1688,34 @@ function pickKind(kind) {
   if (selected && selected.record.kind !== kind) select(null);
   else showKind();
 }
-shapeKind.onChange(() => pickKind(kindPick.kind));
+// The list at the top: with one tree or a grid, the kind grown (the tree's
+// kind, a setting); in the forest, which kind's settings this panel shows.
+shapeKind.onChange(() => {
+  if (shown === 'forest') return pickKind(kindPick.kind);
+  settings.tree.kind = kindPick.kind;
+  select(null);
+  dirty.forest = true; // (the forest's own trees don't change, but "start from" may)
+  growTree({ frame: true });
+  showKind();
+  remember();
+});
+// The tree's seed and variant, under its kind: the seed is the forest's too
+// (its trees grow from it), the variant only one tree's or the grid's.
+const seedRow = watch(shapeFolder.add(settings.tree, 'seed', ...range('tree.seed')), 'both');
+const variantRow = watch(shapeFolder.add(settings.tree, 'variant', ...range('tree.variant')), 'tree');
+const newSeedRow = shapeFolder.add({
+  newSeed() {
+    settings.tree.seed = 1 + Math.floor(Math.random() * 999);
+    refreshPanel();
+    dirty.forest = true;
+    if (shown === 'forest') growForest();
+    else growTree();
+    remember();
+  },
+}, 'newSeed').name('new seed');
+const keptRows = new Set([shapeKind, seedRow, variantRow, newSeedRow]); // (kept when the panel is filled for another kind)
+const treeOnlyRows = [variantRow];
+let tintRow = null; // (the one tree's or grid's tint, among the greens)
 const kindNameEl = document.getElementById('kind-name');
 const kindSays = document.getElementById('kind-says');
 let filled = null; // (the kind whose rows the panel holds)
@@ -1641,6 +1736,7 @@ function markedTree() {
 }
 function showMarks() {
   forestRows?.show(shown === 'forest');
+  tintRow?.show(shown !== 'forest');
   for (const [kind, row] of mixRows) row.shown(kind === filled); // (the mix's table marks the kind shown here)
   const tree = markedTree();
   const drew = tree && tree.record.kind === filled ? drawnIn(tree.group.userData.species, tree.record) : null;
@@ -1656,7 +1752,7 @@ function showMarks() {
   const sized = Math.abs(size - 1) > 0.005;
   const who = [record.age !== undefined ? `${record.age} years old` : '', record.wood ? 'grown in a wood' : '', selected ? `${selected.height.toFixed(1)} m tall` : ''].filter(Boolean).join(', ');
   const why = otherAge || record.wood || sized
-    ? ` The handles are the ${kindName(filled)} as the Tree tab grows it${shape.age !== undefined ? ` (${shape.age} years)` : ''}, so its marks can fall outside them${sized ? `; the forest's "size" makes it ${size.toFixed(2)} times as big` : ''}.`
+    ? ` The handles are the ${kindName(filled)} as one tree grows it${shape.age !== undefined ? ` (${shape.age} years)` : ''}, so its marks can fall outside them${sized ? `; the forest's "size" makes it ${size.toFixed(2)} times as big` : ''}.`
     : '';
   if (drew) kindSays.textContent = tree.picked ? `The selected tree: ${who}.${why} The sliders change every ${kindName(filled)}.` : 'This tree\'s own values.';
   else if (tree?.record.kind === filled) kindSays.textContent = 'Selected. This kind\'s trees keep no values of their own to mark.';
@@ -1680,7 +1776,7 @@ function fillShapeFolder() {
     section._closed ? shut.add(section._title) : shut.delete(section._title);
     for (const panel of section.folders) panel._closed ? opened.delete(`${section._title}/${panel._title}`) : opened.add(`${section._title}/${panel._title}`);
   }
-  for (const child of [...shapeFolder.children]) if (child !== shapeKind) child.destroy();
+  for (const child of [...shapeFolder.children]) if (!keptRows.has(child)) child.destroy();
   outlineRow = null;
   crownRow = null;
   marks.clear();
@@ -1766,6 +1862,9 @@ function fillShapeFolder() {
   if (shut.has('greens')) greens.close();
   recolored(greens.addColor(settings.colors[kind], 'dark').name('darkest'));
   recolored(greens.addColor(settings.colors[kind], 'light').name('lightest'));
+  // (How far one tree's or the grid's trees lean to the darker or lighter green: theirs, not the forest's.)
+  tintRow = watch(greens.add(settings.tree, 'tint', ...range('tree.tint')).name('tint (one tree, grid)'), 'tree');
+  tintRow.show(shown !== 'forest');
   // The kind in the forest (shown in the Forest tab): its trees all of the
   // Tree tab's age or of several (src/age.js), and where it grows
   // (src/site.js), which is the kind's own and has no slider.
@@ -1880,6 +1979,7 @@ swayFolder.add(rig.clock, 'paused').name('pause (P)').listen();
 swayFolder.add(settings.sway, 'timeScale', ...range('sway.timeScale')).name('time scale').onChange(remember);
 
 const viewFolder = gui.addFolder('view').close();
+const personRow = addPersonRow(viewFolder); // (moved to the top of "you" with the walk's rows: see the panel's order, below)
 viewFolder.add(ui, 'textSize', { '1×': 1, '1.25×': 1.25, '1.5×': 1.5, '2×': 2 }).name('text size').onChange(() => {
   applyTextSize();
   try {
@@ -2086,9 +2186,10 @@ async function shareScreenshot() {
 async function downloadModel() {
   note('Making the model…');
   const trees = settings.tab === 'tree' ? garden : woods;
-  const ground = !model.ground ? null : settings.tab === 'tree' ? null : terrain.mesh;
+  // (The ground: the forest's hills cut to the forest, or the hills under one tree cut to it; level ground isn't drawn.)
+  const ground = !model.ground ? null : settings.tab === 'tree' && !onHills() ? null : terrain.mesh;
   try {
-    const groundHalf = settings.forest.radius + 10;
+    const groundHalf = settings.tab === 'tree' ? Math.max(15, gardenSize.extent + 5) : settings.forest.radius + 10;
     const { blob, triangles } = await exportModel({ trees, ground, groundHalf, instancing: model.instancing, settings, link: shareLink() });
     download(blob, `treelab-${settings.tab}-${stamp()}.glb`);
     note(`Model saved: ${count(trees.userData.count)} trees, ${count(triangles)} triangles${model.instancing ? ' (instanced)' : ''}. It's yours to use (CC0).`, 8000);
@@ -2199,7 +2300,7 @@ renderer.domElement.addEventListener('dblclick', (e) => {
   if (settings.tab === 'tree') growTree({ frame: true });
   else showTab('tree', { frame: true });
   remember();
-  note(from === 'tree' ? `The ${kindName(record.kind)}, seed ${record.seed}, variant ${record.variant}. "show: grid" goes back to the grid.` : `The ${kindName(record.kind)}, seed ${record.seed}, variant ${record.variant}, from the forest.`, 8000);
+  note(from === 'tree' ? `The ${kindName(record.kind)}, seed ${record.seed}, variant ${record.variant}. "Grid", at the top, goes back to the grid.` : `The ${kindName(record.kind)}, seed ${record.seed}, variant ${record.variant}, from the forest.`, 8000);
 });
 
 // --- Go -----------------------------------------------------------------------------
@@ -2241,6 +2342,21 @@ setTerrain();
 growTree();
 showTab(settings.tab, { frame: true });
 if (start?.notes.length) note(`From ${start.from}: ${start.notes.slice(0, 2).join('; ')}.`, 8000);
+// The panel in its order: what's shown (the scene: the grid's, or the
+// forest's with its pattern, rules, groves and mix inside), then the world
+// round it (the ground, the sky, the wind), then you (the figure and the
+// camera), then saving and sharing. The rows were made where they're worked
+// out, above; here they are put where they're read.
+const skyFolder = gui.addFolder('sky').close();
+skyFolder.$children.append(lightFolder.domElement, colourFolder.domElement);
+swayFolder.title('wind');
+windFolder.title('the wind');
+swayFolder.$children.append(windFolder.domElement);
+viewFolder.title('you');
+viewFolder.$children.prepend(personRow.domElement, amongRow.domElement, eyesRow.domElement);
+forestFolder.$children.append(patternFolder.domElement, rulesFolder.domElement, patchFolder.domElement, mixFolder.domElement);
+groundChoice.domElement.after(gridRow.domElement); // (the choice, then the metre grid, then the hills' rows)
+for (const f of [showFolder, forestFolder, groundFolder, skyFolder, swayFolder, viewFolder, fileFolder]) gui.$children.append(f.domElement);
 // (The panel's own folders, each in its colour.)
 for (const folder of gui.folders) tint(folder, TINTS[folder._title]);
 if (innerWidth > 0 && innerWidth < 700) {
@@ -2268,47 +2384,66 @@ if (innerWidth > 0 && innerWidth < 700) {
   }
 }
 
-// The support card (src/support.js): once a visit, after a few minutes
-// with the page in view and none of TreeLab's own cards open, in the
-// corner, clear of the settings. Its three buttons each put it away.
+// The support card (src/support.js), in the middle: the first ask as the
+// page opens (once the welcome card is closed), with only "OK"; the second
+// a few minutes later, with "OK" and "Never show this again"; then nothing
+// more that visit. "OK" (or Escape) closes it; following the Ko-fi link
+// counts as an answer too.
 {
   const card = document.getElementById('support');
-  const panel = document.getElementById('panel');
+  const says = document.getElementById('support-says');
+  const ok = document.getElementById('support-ok');
+  const never = document.getElementById('support-never');
   document.getElementById('support-kofi').href = KOFI;
-  document.getElementById('support-kofi-button').src = KOFI_BUTTON;
-  const place = () => {
-    const { right, bottom } = supportPlace(panel.getBoundingClientRect(), innerWidth, innerHeight);
-    card.style.setProperty('--support-right', `${right}px`);
-    card.style.setProperty('--support-bottom', `${bottom}px`);
+  document.getElementById('support-kofi-cup').src = KOFI_CUP;
+  document.getElementById('support-plain').textContent = PLAIN_LINE;
+  let made = asksMade(); // (kept here too, so a browser that keeps nothing still gets its second ask)
+  let clock = null;
+  let said = null; // (the line last shown, so the second ask says something else)
+  const done = (n) => { made = n; setAsksMade(n); };
+  const ask = (which) => {
+    if (supportIsOff()) return; // (turned off meanwhile, in another tab)
+    said = lineFor(which, said);
+    says.textContent = said;
+    never.hidden = which === 'first';
+    done(which === 'first' ? 1 : 2);
+    card.showModal?.();
+    ok.focus();
   };
-  // (Placed again when the window or the panel changes size: the panel's edge can be dragged, and it folds.)
-  const watch = typeof ResizeObserver === 'function' ? new ResizeObserver(place) : null;
-  const away = () => {
-    card.hidden = true;
-    removeEventListener('resize', place);
-    watch?.disconnect();
-  };
-  document.getElementById('support-kofi').addEventListener('click', away);
-  document.getElementById('support-later').addEventListener('click', away);
-  document.getElementById('support-never').addEventListener('click', () => {
-    turnSupportOff(); // (where the browser keeps nothing, it may show again on a later visit)
-    away();
-  });
-  if (showsSupport()) {
+  // The second ask: after the page has been in view so long, with none of TreeLab's cards open.
+  const second = () => {
     const delay = supportDelay(location.search);
     let inView = 0;
-    const clock = setInterval(() => {
+    clock = setInterval(() => {
       if (document.visibilityState !== 'visible' || document.querySelector('dialog[open]')) return;
       if (++inView < delay) return;
       clearInterval(clock);
-      if (!showsSupport()) return; // (turned off meanwhile, in another tab)
-      markSeen();
-      place();
-      addEventListener('resize', place);
-      watch?.observe(panel);
-      card.hidden = false;
+      ask('second');
     }, 1000);
-  }
+  };
+  card.addEventListener('close', () => { if (made === 1 && !clock) second(); });
+  ok.addEventListener('click', () => card.close());
+  document.getElementById('support-kofi').addEventListener('click', () => {
+    done(2);
+    clearInterval(clock);
+    card.close();
+  });
+  never.addEventListener('click', () => {
+    turnSupportOff(); // (where the browser keeps nothing, it may ask again on a later visit)
+    done(2);
+    card.close();
+  });
+  const due = askDue();
+  // (Someone sent a view by a link came to see that view, as the welcome card knows: no ask as it opens, only the later one.)
+  if (due === 'first' && opensOnAView(location.hash)) {
+    done(1);
+    second();
+  } else if (due === 'first') {
+    const welcome = document.getElementById('welcome');
+    const first = () => setTimeout(() => ask('first'), 800);
+    if (welcome.open) welcome.addEventListener('close', first, { once: true });
+    else first();
+  } else if (due === 'second') second();
 }
 
 // The camera never under the ground: the orbit's tilt keeps it above the
@@ -2317,7 +2452,7 @@ if (innerWidth > 0 && innerWidth < 700) {
 // its eyes it needs no more; behind it, it's kept off the ground too.
 function keepAboveGround() {
   const p = camera.position;
-  const ground = shown === 'forest' && terrain ? terrain.heightAt(p.x, p.z) : 0;
+  const ground = hillsShown()?.heightAt(p.x, p.z) ?? 0;
   if (standing && settings.view.eyes) return;
   if (p.y < ground + (standing ? 0.3 : 0.5)) p.y = ground + (standing ? 0.3 : 0.5);
 }

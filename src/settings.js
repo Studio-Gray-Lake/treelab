@@ -32,7 +32,7 @@ export function defaultSettings() {
     app: 'TreeLab',
     version: SETTINGS_VERSION,
     tab: 'tree',
-    tree: { kind: 'oak', seed: 7, variant: 0, tint: 0.5, show: 'one tree', rows: 2, cols: 4, vary: 'variants', gap: 1, labels: true },
+    tree: { kind: 'oak', seed: 7, variant: 0, tint: 0.5, show: 'one tree', ground: 'flat', rows: 2, cols: 4, vary: 'variants', gap: 1, labels: true },
     shapes: structuredClone(DEFAULT_SHAPES),
     forest: {
       seed: 7,
@@ -85,6 +85,7 @@ export const CHOICES = {
   tab: ['tree', 'forest'],
   'tree.kind': KINDS,
   'tree.show': ['one tree', 'grid'],
+  'tree.ground': ['flat', 'hills'], // (one tree's: on level ground, or on the forest's hills. The grid is always flat.)
   'tree.vary': ['variants', 'seeds', 'kinds by row'],
   'forest.area': ['circle', 'square'],
   'forest.pattern': ['even spacing', 'random', 'jittered grid', 'clumps', 'rows'],
@@ -262,6 +263,8 @@ export const BEFORE = {
   // (The seasons, src/season.js: before them every tree was in full summer leaf.)
   'season.leaves': 1,
   'season.fresh': 0,
+  // (One tree's ground: before it could stand on the hills, it stood on level ground.)
+  'tree.ground': 'flat',
   // (The view's turn speed: before the slider, a turn in half a minute.)
   'view.turnSpeed': 12,
   // (The forest's rules, src/site.js: before there were any, a tree stood wherever a seed fell.)

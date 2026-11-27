@@ -12,7 +12,7 @@ The companion to [FOUNDATIONS.md](FOUNDATIONS.md): that page says what TreeLab h
 
 - **Settings** are one plain object (`src/settings.js`). Everything on screen follows from it. A link or a file is that object written down.
 - **Growing** turns a kind, a seed and a shape into a tree's wood and leaves (`src/oak/`, `src/kinds.js`).
-- **Planting** decides which trees stand where (`src/garden.js` for the Tree tab, `src/forest.js` and `src/site.js` for the forest) and draws each grown tree as many times as it stands (`src/tree.js`). What answers to the ground under one tree can't be part of a grown tree that many share: on the hills each tree's roots are drawn for it alone, over its own ground, and its trunk is sunk as its own slope asks.
+- **Planting** decides which trees stand where (`src/garden.js` for one tree and the grid, `src/forest.js` and `src/site.js` for the forest) and draws each grown tree as many times as it stands (`src/tree.js`). What answers to the ground under one tree can't be part of a grown tree that many share: on the hills each tree's roots are drawn for it alone, over its own ground, and its trunk is sunk as its own slope asks.
 - **Lighting** is the sun, its shadows, the sky's light among the trees, the shade inside crowns and the mist (`src/light.js` and the modules round it).
 - **The page** (`src/main.js`) wires the panel to the settings and the settings to the rest.
 
@@ -70,7 +70,8 @@ A kind's key (`hawthorn`, `linden`) never changes once it has been in a link. On
 
 ## The panels
 
-- **The settings are on the right; one kind of tree's shape is on the left**, in a panel of its own. The left panel shows the selected tree's kind (a click on a tree selects it). With none selected it shows the Tree tab's kind, or, in the Forest tab, the kind last picked.
+- **Three buttons at the top choose what is shown: one tree, a grid, or a forest.** Underneath they are the settings they always were (the tab, and one tree or a grid), so links did not change.
+- **The tree is on the left; the world is on the right.** On the left, the tree's kind, seed and variant, then one kind of tree's shape in a panel of its own. On the right, each section answers one question: the *scene* (what is planted, and how: the grid's rows, or the forest's area, pattern, rules and mix), the *ground*, the *sky*, the *wind*, *you* (the figure and the camera), and *save and share*. The left panel shows the selected tree's kind (a click on a tree selects it). With none selected it shows the kind grown, or, in the forest, the kind last picked.
 - **What is selected, and which kind the left panel shows in the forest, are not settings.** A link does not carry them, and neither does a saved file. The same holds for which cards are folded and how wide they were dragged: those are the viewer's own, kept in the browser.
 - **A row is a name, a bar and a small box for the number.** The name has a set share of the row and wraps onto more lines; the bar gets what is left. A long name makes a taller row, never a shorter bar.
 - **What is a kind's own is in the kind's panel**: its shape, its greens, its ages in a forest, and where it grows. The forest's mix is a table with a row a kind (whether it grows, its share, how many stand), and a click on a kind's name there shows the kind on the left.

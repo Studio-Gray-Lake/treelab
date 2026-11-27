@@ -1,26 +1,51 @@
-// The support card (index.html: #support): after a few minutes with the
-// page in view, a small card in the corner asks, once a visit, whether the
-// viewer would like to support the studio on Ko-fi. A trial, before any paid
-// version: what it brings is read from Ko-fi's own count of supporters.
+// The support card (index.html: #support): a card in the middle of the
+// screen that asks whether the viewer would like to support the studio on
+// Ko-fi. A trial, before any paid version: what it brings is read from
+// Ko-fi's own count of supporters.
 //
-// - A plain link to the studio's Ko-fi page, drawn as Ko-fi's own button (a
-//   picture from Ko-fi's button kit, served from TreeLab's own files, as the
-//   workshop's was): no Ko-fi script and nothing loaded from Ko-fi, so Ko-fi
+// - Twice a visit at most. The first ask comes as the page opens (once the
+//   welcome card, if it shows, is closed), with only "OK". The second comes
+//   after a few minutes with the page in view, with "OK" and "Never show this
+//   again". After it, nothing more that visit. A reload in the same tab
+//   carries on where the visit was; a new tab is a new visit.
+// - Following the Ko-fi link counts as an answer: no more asks that visit.
+// - A plain link to the studio's Ko-fi page, drawn as a button in Ko-fi's
+//   look: Ko-fi's cup (cut from its own button, served from TreeLab's own
+//   files) and our words, "Support us on Ko-fi": no Ko-fi script and nothing loaded from Ko-fi, so Ko-fi
 //   sees nothing until someone clicks.
-// - Once a visit: shown, it isn't shown again in that tab, even on a reload
-//   (a new tab is a new visit). "Not now" just puts it away.
 // - "Never show this again" is kept in this browser only: never in settings
 //   or links, and nothing about the viewer is kept anywhere.
-// - Its time counts only while the page is in view and no card of TreeLab's
-//   own (welcome, log, share) is open.
+// - The time before the second ask counts only while the page is in view and
+//   no card of TreeLab's own (welcome, log, share) is open.
 
 // The studio's Ko-fi page.
 export const KOFI = 'https://ko-fi.com/Z1K222EED7';
-// Ko-fi's own button (980 by 198), bundled with TreeLab.
-export const KOFI_BUTTON = new URL('./assets/kofi-support.png', import.meta.url).href;
+// Ko-fi's cup (122 by 122, cut from Ko-fi's own button), bundled with TreeLab: the card's button is the cup and our own words.
+export const KOFI_CUP = new URL('./assets/kofi-cup.png', import.meta.url).href;
 
-// How long the page is in view before the card: five minutes, or
-// ?support=<n>s (or <n>m) in the address, to try it out.
+// What an ask says: a line picked at random each time, over one plain line
+// that says what's being asked, for anyone the pun passes by. "Enjoying
+// TreeLab?" only on the second ask: the first comes before the viewer has
+// done anything. Picked at random rather than in turn, so nothing more is
+// kept in the browser.
+export const LINES = [
+  'Made with tree.js. Help it keep growing?',
+  'Help us branch out.',
+  'Leaf us a tip.',
+  'With your donations we can really get our roots in.',
+];
+export const LATER_LINES = [...LINES, 'Enjoying TreeLab? Support our development on Ko-fi.'];
+export const PLAIN_LINE = 'TreeLab is free, made by a small studio.';
+
+// A line for this ask, never the one the visit last showed (`last`), from
+// `random` (0 to 1).
+export function lineFor(which, last = null, random = Math.random) {
+  const lines = (which === 'second' ? LATER_LINES : LINES).filter((line) => line !== last);
+  return lines[Math.min(lines.length - 1, Math.floor(random() * lines.length))];
+}
+
+// How long the page is in view between the first ask and the second: five
+// minutes, or ?support=<n>s (or <n>m) in the address, to try it out.
 export const SUPPORT_AFTER = 5 * 60;
 export function supportDelay(search = '') {
   const asked = new URLSearchParams(search).get('support')?.match(/^(\d+(?:\.\d+)?)([sm]?)$/);
@@ -29,11 +54,11 @@ export function supportDelay(search = '') {
 }
 
 // Where the browser keeps "never show this again" (this browser's own), and
-// that the card was shown this visit (this tab's own).
+// how far this visit has got (this tab's own): "1" after the first ask,
+// "2" when there's nothing more to ask.
 export const SUPPORT_STORE = 'treelab.support';
 export const SUPPORT_VISIT = 'treelab.support.visit';
 const NEVER = 'never';
-const SEEN = 'seen';
 
 // Storage, where the browser gives it: asking for it can itself fail (it's
 // blocked, or a private window), and then nothing is kept.
@@ -55,20 +80,17 @@ function write(store, key, value) {
 
 export const supportIsOff = (store = () => localStorage) => read(store, SUPPORT_STORE) === NEVER;
 export const turnSupportOff = (store = () => localStorage) => write(store, SUPPORT_STORE, NEVER);
-export const seenThisVisit = (session = () => sessionStorage) => read(session, SUPPORT_VISIT) === SEEN;
-export const markSeen = (session = () => sessionStorage) => write(session, SUPPORT_VISIT, SEEN);
 
-// Whether this visit may still show the card.
-export const showsSupport = ({ store, session } = {}) => !supportIsOff(store) && !seenThisVisit(session);
+// How many asks this visit has had (0, 1 or 2), and setting it.
+export function asksMade(session = () => sessionStorage) {
+  const n = Number(read(session, SUPPORT_VISIT));
+  return n === 1 || n === 2 ? n : 0;
+}
+export const setAsksMade = (n, session = () => sessionStorage) => write(session, SUPPORT_VISIT, String(n));
 
-// Where the card stands, clear of the settings panel: { right, bottom } in
-// px, given the panel's box and the window's size. A panel across the
-// bottom (a phone) puts the card above it; a panel down the right side that
-// reaches the bottom corner puts it to the panel's left; otherwise, the
-// corner itself.
-export function supportPlace(panel, width, height, gap = 12, room = 160) {
-  if (!panel || panel.width <= 0) return { right: gap, bottom: gap };
-  if (panel.width > width * 0.6) return { right: gap, bottom: Math.max(gap, height - panel.top + gap) };
-  if (panel.bottom > height - room) return { right: Math.max(gap, width - panel.left + gap), bottom: gap };
-  return { right: gap, bottom: gap };
+// Which ask is due this visit: 'first', 'second' or null (none: the viewer
+// said never, or the visit has had both).
+export function askDue({ store, session } = {}) {
+  if (supportIsOff(store)) return null;
+  return ['first', 'second', null][asksMade(session)];
 }
