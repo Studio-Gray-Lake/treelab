@@ -16,6 +16,18 @@ export const NEWS = 'https://studiograylake.com/news.html';
 
 export const RELEASES = [
   {
+    version: '0.4.3',
+    date: '2026-11-27',
+    name: 'A quicker start',
+    post: null,
+    changes: [
+      'The page no longer stops for seconds as it opens: on a computer drawing without a graphics card, about half the wait it was',
+      'One tree on the hills stands on a slope, its roots on the rise',
+      'Walking beside one tree on the hills, you start next to it, facing it',
+      'A model of one tree on the hills takes the ground round the tree',
+    ],
+  },
+  {
     version: '0.4.2',
     date: '2026-11-27',
     name: 'One tree, a grid or a forest',

@@ -23,9 +23,10 @@ import { leafy } from './kinds.js';
 
 const COLORS = 8;
 
-// ground: the ground's mesh, cut to a square `groundHalf` m each way (its
+// ground: the ground's mesh, cut to a square `groundHalf` m each way round
+// `groundAt` ({ x, z }: the middle, or one tree's place on the hills) (its
 // flat facets make a big file; the far hills aren't wanted).
-export async function exportModel({ trees, ground = null, groundHalf = Infinity, instancing = true, settings = null, link = '' }) {
+export async function exportModel({ trees, ground = null, groundHalf = Infinity, groundAt = { x: 0, z: 0 }, instancing = true, settings = null, link = '' }) {
   const root = new THREE.Group();
   root.name = 'TreeLab';
   root.userData = { treelab: { settings, link, licence: 'CC0 1.0: https://creativecommons.org/publicdomain/zero/1.0/' } };
@@ -87,7 +88,7 @@ export async function exportModel({ trees, ground = null, groundHalf = Infinity,
   }
 
   if (ground) {
-    const g = keep(cut(ground.geometry, groundHalf));
+    const g = keep(cut(ground.geometry, groundHalf, groundAt));
     g.name = 'ground';
     const mesh = new THREE.Mesh(g, materials.ground);
     mesh.name = 'ground';
@@ -159,15 +160,15 @@ export function gather(colors, k) {
   return { centres, of };
 }
 
-// The triangles of a (non-indexed) geometry inside a square `half` m each way.
-function cut(source, half) {
+// The triangles of a (non-indexed) geometry inside a square `half` m each way round `at`.
+function cut(source, half, at = { x: 0, z: 0 }) {
   const names = Object.keys(source.attributes);
   const pos = source.attributes.position;
   const keep = [];
   for (let t = 0; t < pos.count; t += 3) {
     const x = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3;
     const z = (pos.getZ(t) + pos.getZ(t + 1) + pos.getZ(t + 2)) / 3;
-    if (Math.abs(x) <= half && Math.abs(z) <= half) keep.push(t);
+    if (Math.abs(x - at.x) <= half && Math.abs(z - at.z) <= half) keep.push(t);
   }
   const g = new THREE.BufferGeometry();
   for (const name of names) {

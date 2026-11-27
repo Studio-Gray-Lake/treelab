@@ -48,6 +48,7 @@ import { closedShape, hemmedIn } from './woodGrown.js';
 import { OUTLINE, outlineOf } from './oak/oak.js';
 import { attachTooltips } from './tooltip.js';
 import { shapeTip, tip } from './tips.js';
+import { slopeSpot } from './slope.js';
 import { ABOUT, opensOnAView, showsWelcome, turnWelcomeOff } from './welcome.js';
 import { KOFI, KOFI_CUP, PLAIN_LINE, lineFor, askDue, asksMade, setAsksMade, supportDelay, supportIsOff, turnSupportOff } from './support.js';
 import { versionLabel, versionSays } from './version.js';
@@ -214,21 +215,33 @@ const mistSky = new THREE.Color(); // the sky's light in a bit of mist under the
 // wide; null where this browser can't read the colours back.)
 const LOOK = { width: 57, height: 2, up: 6, tall: 4 };
 const STEPS = 72;
-const horizonTarget = new THREE.WebGLRenderTarget(LOOK.width, LOOK.height, { type: THREE.HalfFloatType, depthBuffer: false });
+// (A small picture for each quarter, so all four are drawn at once and read back while the page goes on.)
+const horizonTargets = Array.from({ length: 4 }, () => new THREE.WebGLRenderTarget(LOOK.width, LOOK.height, { type: THREE.HalfFloatType, depthBuffer: false }));
 const horizonCamera = new THREE.PerspectiveCamera(LOOK.tall, 1 / Math.tan(THREE.MathUtils.degToRad(LOOK.tall / 2)), 0.1, 1000);
 const compass = (x, z) => Math.floor((((Math.atan2(x, z) / (2 * Math.PI)) % 1 + 1) % 1) * STEPS) % STEPS;
-function horizonColors() {
-  if (!renderer.capabilities.textureTypeReadable(THREE.HalfFloatType)) return null;
-  const pixels = new Uint16Array(LOOK.width * LOOK.height * 4);
-  const sums = Array.from({ length: STEPS }, () => [0, 0, 0, 0]);
+let horizonAsk = 0; // (which ask for the horizon's colours is the latest)
+// The four quarters drawn now; their colours when they've been read back (a promise; null where they can't be).
+function horizonColorsLater() {
+  if (!renderer.capabilities.textureTypeReadable(THREE.HalfFloatType) || !renderer.readRenderTargetPixelsAsync) return Promise.resolve(null);
   const before = renderer.getRenderTarget();
-  const forward = new THREE.Vector3(), right = new THREE.Vector3();
   for (let quarter = 0; quarter < 4; quarter++) {
     horizonCamera.rotation.set(THREE.MathUtils.degToRad(LOOK.up), (quarter * Math.PI) / 2, 0, 'YXZ');
     horizonCamera.updateMatrixWorld();
-    renderer.setRenderTarget(horizonTarget);
+    renderer.setRenderTarget(horizonTargets[quarter]);
     renderer.render(skyScene, horizonCamera);
-    renderer.readRenderTargetPixels(horizonTarget, 0, 0, LOOK.width, LOOK.height, pixels);
+  }
+  renderer.setRenderTarget(before);
+  return Promise.all(horizonTargets.map((target) => {
+    const pixels = new Uint16Array(LOOK.width * LOOK.height * 4);
+    return renderer.readRenderTargetPixelsAsync(target, 0, 0, LOOK.width, LOOK.height, pixels).then(() => pixels);
+  })).then(horizonFrom);
+}
+// The horizon's colours from the four quarters' pixels.
+function horizonFrom(quarters) {
+  const sums = Array.from({ length: STEPS }, () => [0, 0, 0, 0]);
+  const forward = new THREE.Vector3(), right = new THREE.Vector3();
+  for (let quarter = 0; quarter < 4; quarter++) {
+    const pixels = quarters[quarter];
     const yaw = (quarter * Math.PI) / 2;
     forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
     right.set(Math.cos(yaw), 0, -Math.sin(yaw));
@@ -242,7 +255,6 @@ function horizonColors() {
       }
     }
   }
-  renderer.setRenderTarget(before);
   if (sums.some((s) => !s[3] || !s.every(Number.isFinite))) return null;
   return sums.map(([r, g, b, n]) => new THREE.Color().setRGB(r / n, g / n, b / n));
 }
@@ -396,8 +408,17 @@ function lightFromSky(L) {
   // (A bit of mist under the open sky: lit from above by the sky, from
   // below by the ground, half and half.)
   mistSky.copy(comes.air).multiplyScalar(0.5 * skyGives.value).add(_skyLight.copy(groundUnder.material.color).multiplyScalar(0.5));
+  // (Drawn now, read back while the page goes on: until they come, the far veil keeps the colours it had, or the
+  // fallback below. A later ask's colours win over an earlier one's.)
   groundUnder.visible = false;
-  horizon = horizonColors();
+  const ask = ++horizonAsk;
+  horizonColorsLater()
+    .then((colors) => {
+      if (ask !== horizonAsk) return;
+      horizon = colors;
+      fitVeilColor();
+    })
+    .catch(() => {}); // (a lost context: the next light asks again)
   groundUnder.visible = true;
   // (Where the horizon can't be read: its hue from src/light.js, about as
   // bright as the low sky is against the whole.)
@@ -573,6 +594,10 @@ let edge = null;
 // and edge hidden. The grid always stands on level ground, so its trees
 // compare fairly.
 const onHills = () => settings.tree.ground === 'hills' && settings.tree.show !== 'grid';
+// Where it stands on them: on a slope near their middle (src/slope.js), the same place for the same hills. On level
+// ground, the middle.
+let treeSpot = { x: 0, z: 0 };
+const spotGround = () => (onHills() ? terrain.heightAt(treeSpot.x, treeSpot.z) : 0);
 // The hills under what's shown, if it stands on them: the forest's, or one tree's on them. (Else level ground.)
 const hillsShown = () => ((shown ?? settings.tab) === 'forest' || ((shown ?? settings.tab) === 'tree' && onHills()) ? terrain : null);
 // The stages for what's shown: one tree's level ground and grid, or the hills (with the forest on them, or not).
@@ -873,7 +898,14 @@ const growTree = safely(function growTree({ frame = false } = {}) {
   // sunk 0.3 m, as in the forest.
   const hills = onHills();
   if (hills && setTerrain()) dirty.forest = true;
-  if (hills) for (const r of layout.records) r.y = terrain.heightAt(r.x, r.z) - 0.3;
+  treeSpot = hills ? slopeSpot((x, z) => terrain.heightAt(x, z)) : { x: 0, z: 0 };
+  if (hills) {
+    for (const r of layout.records) {
+      r.x += treeSpot.x;
+      r.z += treeSpot.z;
+      r.y = terrain.heightAt(r.x, r.z) - 0.3;
+    }
+  }
   const numbers = planter.plant(garden, layout.records, settings.shapes, { colorOf, mottle, shapeOf, ground: hills ? terrain : null });
   keepSelection('tree', layout.records);
   wireframe(garden);
@@ -900,9 +932,10 @@ const growTree = safely(function growTree({ frame = false } = {}) {
     ? [['height', metres(first.height)], ['reach', metres(first.reach)], ['crown', metres(first.crown)], ['triangles', count(numbers.triangles)], ['grown in', grownIn(numbers)]]
     : [['trees', count(numbers.trees)], ['tallest', metres(layout.tallest)], ['spacing', metres(layout.spacing)], ['triangles', count(numbers.triangles)], ['grown in', grownIn(numbers)]];
   // (On the tree's left: the panel covers the right of the view.)
-  personByTree.set(one ? -Math.max(2, first.reach + 1) : layout.records[0].x - layout.spacing / 2, 0, one ? 0.6 : layout.records[0].z);
+  personByTree.set(one ? treeSpot.x - Math.max(2, first.reach + 1) : layout.records[0].x - layout.spacing / 2, 0, one ? treeSpot.z + 0.6 : layout.records[0].z);
   if (hills) personByTree.y = terrain.heightAt(personByTree.x, personByTree.z);
   if (settings.tab === 'tree') {
+    trunks = hills ? trunksOf(garden) : []; // (what the figure walks round, on the hills)
     person.position.copy(personByTree);
     fitTreeStage();
     showStats();
@@ -1026,8 +1059,7 @@ const growForest = safely(function growForest({ frame = false } = {}) {
 // shadows they throw.
 // One tree's or the grid's stage, on the ground they stand on.
 function fitTreeStage() {
-  const base = onHills() ? terrain.heightAt(0, 0) : 0;
-  fitStage(new THREE.Vector3(0, base, 0), gardenSize.extent, gardenSize.tallest);
+  fitStage(new THREE.Vector3(treeSpot.x, spotGround(), treeSpot.z), gardenSize.extent, gardenSize.tallest);
 }
 function fitForestStage() {
   const base = terrain.heightAt(0, 0);
@@ -1059,11 +1091,16 @@ const views = { tree: null, forest: null }; // each tab's camera, while away fro
 const tilt = new THREE.Vector3(0.45, 0.18, 1).normalize();
 function frameView() {
   const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-  setStanding(settings.tab === 'forest' && settings.view.stand);
-  if (settings.tab === 'tree') {
+  setStanding((settings.tab === 'forest' || onHills()) && settings.view.stand);
+  if (settings.tab === 'tree' && standing) {
+    // One tree on the hills, walked round: the figure where it stands beside the tree, facing it.
+    const { x, z } = personByTree;
+    Object.assign(walker, createWalker({ x, z, y: terrain.heightAt(x, z), heading: Math.atan2(treeSpot.x - x, treeSpot.z - z) }));
+    viewFromWalker();
+  } else if (settings.tab === 'tree') {
     const { extent, tallest } = gardenSize;
     const distance = Math.max((tallest * 0.62) / tanV, (extent * 1.15) / (tanV * camera.aspect), 6);
-    controls.target.set(0, (onHills() ? terrain.heightAt(0, 0) : 0) + tallest * 0.45, 0);
+    controls.target.set(treeSpot.x, spotGround() + tallest * 0.45, treeSpot.z);
     camera.position.copy(controls.target).addScaledVector(tilt, distance + (settings.tree.show === 'grid' ? extent * 0.5 : 0));
   } else if (standing) {
     // Among the trees, facing the sun (src/stand.js): the figure there,
@@ -1248,8 +1285,6 @@ function showTab(tab, { frame = false, keepView = true } = {}) {
   showGridRows();
   showGroundRows();
   edgeRow.show(tab === 'forest');
-  amongRow.show(tab === 'forest');
-  eyesRow.show(tab === 'forest');
   const firstTime = !views[tab];
   if (dirty[tab]) regrow();
   else if (tab === 'tree') rig.bind({ trees: garden, terrain: onHills() ? terrain : flat, warmUp: Math.min(20, 2000 / Math.max(1, garden.userData.count)) });
@@ -1258,9 +1293,11 @@ function showTab(tab, { frame = false, keepView = true } = {}) {
   if (tab === 'tree') {
     fitTreeStage();
     person.position.copy(personByTree); // (back from the forest's middle)
+    trunks = onHills() ? trunksOf(garden) : []; // (what the figure walks round: the one tree's trunk, on the hills)
   } else {
     fitForestStage();
     person.position.set(0, terrain.heightAt(0, 0), 0);
+    trunks = trunksOf(woods);
   }
   if (frame || firstTime) frameView();
   else {
@@ -1504,7 +1541,8 @@ watch(forestFolder.add(settings.forest, 'closes').name('crowns close in a wood')
 const amongRow = forestFolder.add(settings.view, 'stand').name('walk among the trees').onChange((on) => {
   frameView();
   remember();
-  note(on ? `You walk among the trees, facing the sun. ${HOW_TO_WALK}` : 'Back above the forest.', on ? 10000 : 3000);
+  const one = shown === 'tree';
+  note(on ? `${one ? 'You stand beside the tree, facing it.' : 'You walk among the trees, facing the sun.'} ${HOW_TO_WALK}` : one ? 'Back to looking round the tree.' : 'Back above the forest.', on ? 10000 : 3000);
 });
 // Behind the figure, or through its eyes.
 const eyesRow = forestFolder.add(settings.view, 'eyes').name('through its eyes').onChange(() => {
@@ -1663,6 +1701,9 @@ function showGroundRows() {
   slopeRow.show(tab === 'forest');
   groundChoice.show(tab === 'tree' && settings.tree.show !== 'grid');
   gridRow.show(tab === 'tree' && !onHills());
+  // (The walk: in the forest, and round one tree on the hills.)
+  amongRow.show(hills);
+  eyesRow.show(hills);
 }
 
 // Both tabs, on the left of the screen: one kind's shape, in a panel of its
@@ -2190,7 +2231,8 @@ async function downloadModel() {
   const ground = !model.ground ? null : settings.tab === 'tree' && !onHills() ? null : terrain.mesh;
   try {
     const groundHalf = settings.tab === 'tree' ? Math.max(15, gardenSize.extent + 5) : settings.forest.radius + 10;
-    const { blob, triangles } = await exportModel({ trees, ground, groundHalf, instancing: model.instancing, settings, link: shareLink() });
+    const groundAt = settings.tab === 'tree' ? treeSpot : { x: 0, z: 0 }; // (the ground cut round the tree it's under)
+    const { blob, triangles } = await exportModel({ trees, ground, groundHalf, groundAt, instancing: model.instancing, settings, link: shareLink() });
     download(blob, `treelab-${settings.tab}-${stamp()}.glb`);
     note(`Model saved: ${count(trees.userData.count)} trees, ${count(triangles)} triangles${model.instancing ? ' (instanced)' : ''}. It's yours to use (CC0).`, 8000);
   } catch (error) {
@@ -2220,7 +2262,7 @@ function select(record, tab = shown, { kept = false } = {}) {
   if (record) {
     const group = tab === 'tree' ? garden : woods;
     selected = { tab, record, height: heightIn(group.userData.species, record) };
-    const heightAt = tab === 'forest' ? (x, z) => terrain.heightAt(x, z) : () => 0;
+    const heightAt = tab === 'forest' || onHills() ? (x, z) => terrain.heightAt(x, z) : () => 0;
     const points = ringPoints({ x: record.x, z: record.z, radius: ringRadius(record.crown), heightAt }).map((p) => new THREE.Vector3(...p));
     ring = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95 }));
     (tab === 'tree' ? treeStage : forestStage).add(ring);
@@ -2262,7 +2304,7 @@ function centreView() {
   }
   const on = selected?.tab === shown ? selected : null;
   if (on) _slide.set(...focusOf({ x: on.record.x, y: on.record.y ?? 0, z: on.record.z, height: on.height }));
-  else if (shown === 'tree') _slide.set(0, gardenSize.tallest * 0.45, 0);
+  else if (shown === 'tree') _slide.set(treeSpot.x, spotGround() + gardenSize.tallest * 0.45, treeSpot.z);
   else _slide.set(0, terrain.heightAt(0, 0) + 3, 0);
   _slide.sub(controls.target);
   controls.target.add(_slide);
@@ -2458,6 +2500,7 @@ function keepAboveGround() {
 }
 
 let last = null;
+let firstLooks = 3, snappedTo = null; // (the eye's first looks, each setting the exposure at once)
 const frame = (now) => {
   const dt = last === null ? 0 : (now - last) / 1000;
   last = now;
@@ -2468,8 +2511,14 @@ const frame = (now) => {
   controls.update(Math.min(dt, 0.1)); // (by the clock: "turn slowly" turns so many degrees a second, whatever the screen's rate)
   keepAboveGround();
   fitVeil();
-  if (eye.seen) adapt(dt);
-  else settleEye(); // (the first frame)
+  // (The eye's first looks set the exposure at once, as settleEye does for a script's picture, but without stopping
+  // the page to wait for each: a look is read back while the page goes on, src/eye.js. With no graphics card, the
+  // five pictures settleEye draws and waits for took seconds, during which the page could answer nothing.)
+  if (eye.seen && firstLooks > 0 && eye.seen !== snappedTo) {
+    snappedTo = eye.seen;
+    firstLooks--;
+    renderer.toneMappingExposure = exposureFor({ base: baseExposure, was: eye.seen.at, seen: eye.seen.mean, follow: settings.light.eye, range: eyeRange });
+  } else if (eye.seen) adapt(dt);
   fitVeilColor();
   render();
   eye.look();
